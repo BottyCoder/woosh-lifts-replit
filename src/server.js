@@ -243,6 +243,16 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Create ticket for this emergency
+    const ticketResult = await query(
+      `INSERT INTO tickets (lift_id, sms_id, status, notes)
+       VALUES ($1, $2, 'open', $3)
+       RETURNING *`,
+      [lift.id, smsId, incoming]
+    );
+    const ticket = ticketResult.rows[0];
+    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id });
+
     // Get all linked contacts
     const contactsResult = await query(
       `SELECT c.*, lc.relation
@@ -388,6 +398,16 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Create ticket for this emergency
+    const ticketResult = await query(
+      `INSERT INTO tickets (lift_id, sms_id, status, notes)
+       VALUES ($1, $2, 'open', $3)
+       RETURNING *`,
+      [lift.id, smsId, incoming]
+    );
+    const ticket = ticketResult.rows[0];
+    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id });
+
     // Get all linked contacts
     const contactsResult = await query(
       `SELECT c.*, lc.relation
@@ -478,6 +498,133 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
   } catch (err) {
     logEvent('handler_error', { error: String(err && err.stack || err) });
     return res.status(500).json({ ok: false, error: 'internal' });
+  }
+});
+
+// WhatsApp webhook for button clicks
+app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
+  try {
+    console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
+    
+    const entry = req.body.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
+    const message = value?.messages?.[0];
+    
+    if (!message || message.type !== 'button') {
+      console.log('[webhook/whatsapp] Not a button click, ignoring');
+      return res.status(200).json({ status: 'ok', processed: false });
+    }
+    
+    const buttonPayload = message.button?.payload;
+    const buttonText = message.button?.text;
+    const fromNumber = message.from;
+    const contextMessageId = message.context?.id;
+    
+    console.log('[webhook/whatsapp] Button click:', { 
+      from: fromNumber, 
+      payload: buttonPayload, 
+      text: buttonText,
+      contextId: contextMessageId 
+    });
+    
+    // Find contact by WhatsApp number
+    const contactResult = await query(
+      'SELECT * FROM contacts WHERE primary_msisdn = $1',
+      [fromNumber]
+    );
+    
+    if (contactResult.rows.length === 0) {
+      console.log('[webhook/whatsapp] Contact not found:', fromNumber);
+      return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
+    }
+    
+    const contact = contactResult.rows[0];
+    
+    // Find most recent open ticket (assume it's the one they're responding to)
+    const ticketResult = await query(
+      `SELECT t.* FROM tickets t
+       JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+       WHERE lc.contact_id = $1 AND t.status = 'open'
+       ORDER BY t.created_at DESC
+       LIMIT 1`,
+      [contact.id]
+    );
+    
+    if (ticketResult.rows.length === 0) {
+      console.log('[webhook/whatsapp] No open tickets found for contact:', contact.id);
+      return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_tickets' });
+    }
+    
+    const ticket = ticketResult.rows[0];
+    console.log('[webhook/whatsapp] Found ticket:', ticket.id);
+    
+    // Handle button click based on payload (preferred) or text (fallback)
+    const buttonIdentifier = (buttonPayload || buttonText || '').toLowerCase();
+    let shouldClose = false;
+    let confirmationMessage = '';
+    let buttonType = '';
+    
+    if (buttonIdentifier.includes('test')) {
+      shouldClose = true;
+      buttonType = 'test';
+      confirmationMessage = 'Test confirmed. Ticket closed.';
+    } else if (buttonIdentifier.includes('maintenance') || buttonIdentifier.includes('service')) {
+      shouldClose = true;
+      buttonType = 'maintenance';
+      confirmationMessage = 'Maintenance/Service confirmed. Ticket closed.';
+    } else if (buttonIdentifier.includes('entrapment')) {
+      shouldClose = true;
+      buttonType = 'entrapment';
+      confirmationMessage = 'Entrapment confirmed. Ticket closed.';
+    } else {
+      console.log('[webhook/whatsapp] Unknown button type:', buttonIdentifier);
+      return res.status(200).json({ status: 'ok', processed: false, reason: 'unknown_button' });
+    }
+    
+    // Update ticket
+    if (shouldClose) {
+      await query(
+        `UPDATE tickets 
+         SET status = 'closed', 
+             button_clicked = $1, 
+             responded_by = $2, 
+             resolved_at = now(),
+             updated_at = now()
+         WHERE id = $3`,
+        [buttonType, contact.id, ticket.id]
+      );
+      
+      logEvent('ticket_closed', { 
+        ticket_id: ticket.id, 
+        button: buttonType, 
+        contact_id: contact.id,
+        contact_name: contact.display_name 
+      });
+      
+      // Send confirmation message
+      try {
+        await sendTextViaBridge({
+          baseUrl: BRIDGE_BASE_URL,
+          apiKey: BRIDGE_API_KEY,
+          to: fromNumber,
+          text: confirmationMessage
+        });
+        console.log('[webhook/whatsapp] Confirmation sent');
+      } catch (err) {
+        console.error('[webhook/whatsapp] Failed to send confirmation:', err);
+      }
+    }
+    
+    return res.status(200).json({ 
+      status: 'ok', 
+      processed: true, 
+      ticket_id: ticket.id,
+      closed: shouldClose 
+    });
+  } catch (err) {
+    console.error('[webhook/whatsapp] Error:', err);
+    return res.status(500).json({ status: 'error', error: String(err.message) });
   }
 });
 
