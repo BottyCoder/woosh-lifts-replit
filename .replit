@@ -1,6 +1,7 @@
 run = "npm start"
 entrypoint = "src/server.js"
 language = "nodejs"
+modules = ["postgresql-16"]
 
 [nix]
 channel = "stable-22_11"

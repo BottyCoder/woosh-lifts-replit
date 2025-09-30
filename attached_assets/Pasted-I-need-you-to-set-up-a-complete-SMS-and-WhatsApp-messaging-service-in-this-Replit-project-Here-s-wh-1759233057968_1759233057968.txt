@@ -1,0 +1,115 @@
+I need you to set up a complete SMS and WhatsApp messaging service in this Replit project. Here's what needs to be done:
+
+## 1. DATABASE SETUP
+- Set up a free PostgreSQL database using Neon (neon.tech) - it's the easiest option
+- Create a new Neon account and project
+- Copy the DATABASE_URL connection string
+- Create these database tables in the SQL editor:
+
+```sql
+CREATE TABLE lifts (
+    id SERIAL PRIMARY KEY,
+    msisdn VARCHAR(20) UNIQUE NOT NULL,
+    site_name VARCHAR(255),
+    building VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE contacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    display_name VARCHAR(255),
+    primary_msisdn VARCHAR(20),
+    email VARCHAR(255),
+    role VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(primary_msisdn),
+    UNIQUE(email)
+);
+
+CREATE TABLE lift_contacts (
+    lift_id INTEGER REFERENCES lifts(id) ON DELETE CASCADE,
+    contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+    relation VARCHAR(32) DEFAULT 'tenant',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (lift_id, contact_id)
+);
+
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    lift_id INTEGER REFERENCES lifts(id),
+    msisdn VARCHAR(20),
+    direction VARCHAR(20) DEFAULT 'inbound',
+    type VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'received',
+    body TEXT,
+    meta JSONB,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE events (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(50),
+    lift_id INTEGER REFERENCES lifts(id),
+    contact_id UUID REFERENCES contacts(id),
+    data JSONB,
+    ts TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE consents (
+    id SERIAL PRIMARY KEY,
+    contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+    channel VARCHAR(20),
+    status VARCHAR(20),
+    source VARCHAR(255),
+    ts TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(contact_id, channel)
+);
+```
+
+## 2. ENVIRONMENT VARIABLES SETUP
+Set up these secrets in the Replit Secrets tab (lock icon):
+
+- DATABASE_URL: [paste the Neon connection string here]
+- BRIDGE_API_KEY: "demo_key_for_testing" (we'll update this later)
+- BRIDGE_TEMPLATE_NAME: "growthpoint_testv1"
+- BRIDGE_TEMPLATE_LANG: "en"
+- SMSPORTAL_HMAC_SECRET: "demo_hmac_secret_for_testing"
+
+## 3. TEST THE APPLICATION
+After setup, test these endpoints to ensure everything works:
+
+1. GET / - should return "woosh-lifts: ok"
+2. GET /healthz - should return "ok"
+3. GET /__debug - should return JSON with system info
+4. GET /admin/status - should return JSON with database status
+
+## 4. VERIFY DATABASE CONNECTION
+The /admin/status endpoint should show:
+- "db": true
+- Database record counts
+- No connection errors in the console
+
+## 5. CREATE SAMPLE DATA (OPTIONAL)
+If everything works, add some sample data:
+
+```sql
+INSERT INTO lifts (msisdn, site_name, building) VALUES 
+('27824537125', 'Growthpoint Building A', 'Main Lobby'),
+('27834567890', 'Growthpoint Building B', 'Level 5');
+
+INSERT INTO contacts (display_name, primary_msisdn, email, role) VALUES 
+('John Smith', '27812345678', 'john@example.com', 'tenant'),
+('Jane Doe', '27887654321', 'jane@example.com', 'manager');
+```
+
+## EXPECTED RESULT
+- Application runs without errors
+- Database connects successfully
+- All health endpoints return 200 OK
+- Admin status shows database connection: true
+- Console shows "server_listening" message with port 8080
+
+Please complete this setup step by step and let me know when each part is done. If you encounter any errors, show me the error messages so I can help troubleshoot.
