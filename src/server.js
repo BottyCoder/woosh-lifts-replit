@@ -216,13 +216,11 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
 // Direct SMS route
 app.post('/sms/direct', jsonParser, async (req, res) => {
   try {
-    console.log('=== SMS/DIRECT ROUTE HIT - CODE VERSION 2 ===');
-    console.log('[sms/direct] Template config:', { BRIDGE_TEMPLATE_NAME, BRIDGE_TEMPLATE_LANG, BRIDGE_API_KEY: BRIDGE_API_KEY ? 'SET' : 'MISSING' });
-    console.log('[sms/direct] Request body:', req.body);
+    console.log('[sms/direct] Incoming SMS:', JSON.stringify(req.body));
     const { smsId, toDigits, incoming } = normalize(req.body || {});
     if (!toDigits || !incoming) {
       console.log('[sms/direct] Bad request - missing phone or text');
-      return res.status(400).json({ ok: false, error: 'bad_request', detail: 'missing phone/text', CODE_VERSION: 2 });
+      return res.status(400).json({ ok: false, error: 'bad_request', detail: 'missing phone/text' });
     }
     logEvent('sms_received', { sms_id: smsId, lift_msisdn: plus(toDigits), text_len: incoming.length, direct: true });
 
@@ -353,7 +351,7 @@ function verifySignature(req, raw) {
   return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(calc));
 }
 
-// SMS inbound route (simplified - no Pub/Sub)
+// SMS inbound route (with HMAC verification)
 app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
   try {
     const raw = toStr(req.body) || "";
@@ -362,59 +360,16 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
       return res.status(401).json({ error: "invalid signature" });
     }
     const evt = JSON.parse(raw);
-    console.log("[inbound] event", evt);
+    console.log("[inbound] Incoming SMS:", evt);
 
-    const b = evt || {};
-    const s = v => (v === null || v === undefined) ? "" : String(v).trim();
-
-    const smsId = s(b.id) || s(b.Id) || `sms-${Date.now()}`;
-    const rawPhone = s(b.phone) || s(b.phoneNumber) || s(b.to) || s(b.msisdn) || s(b.from);
-    const toDigits = rawPhone.replace(/[^\d]/g, "");
-    let incoming = s(b.text) || s(b.incomingData) || s(b.IncomingData) || s(b.message) || s(b.body);
-
-    if (incoming.length > 1024) incoming = incoming.slice(0, 1024);
-
+    const { smsId, toDigits, incoming } = normalize(evt || {});
     if (!toDigits || !incoming) {
-      return res.status(400).json({ ok: false, error: "missing phone/text" });
+      console.log('[inbound] Bad request - missing phone or text');
+      return res.status(400).json({ ok: false, error: 'bad_request', detail: 'missing phone/text' });
     }
+    logEvent('sms_received', { sms_id: smsId, lift_msisdn: plus(toDigits), text_len: incoming.length, direct: false });
 
-    console.log(JSON.stringify({
-      event: "sms_received_inbound",
-      sms_id: smsId,
-      to: toDigits,
-      text_len: incoming.length
-    }));
-
-    // Template-first processing (simplified)
-    let templateAttempted = false;
-    if (BRIDGE_API_KEY && BRIDGE_TEMPLATE_NAME && toDigits && incoming) {
-      templateAttempted = true;
-      try {
-        const components = [{ type: "body", parameters: [{ type: "text", text: incoming }]}];
-        const graph = await sendTemplateViaBridge({
-          baseUrl: BRIDGE_BASE_URL,
-          apiKey: BRIDGE_API_KEY,
-          to: toDigits,
-          name: BRIDGE_TEMPLATE_NAME,
-          languageCode: (BRIDGE_TEMPLATE_LANG === "en" ? "en_US" : BRIDGE_TEMPLATE_LANG),
-          components
-        });
-        const wa_id = graph?.messages?.[0]?.id || null;
-        console.log(JSON.stringify({ event: "wa_template_ok_inbound", sms_id: smsId, to: toDigits, templateName: BRIDGE_TEMPLATE_NAME, lang: BRIDGE_TEMPLATE_LANG, wa_id, text_len: incoming.length }));
-      } catch (e) {
-        console.log(JSON.stringify({
-          event: "wa_template_fail_inbound",
-          sms_id: smsId,
-          to: toDigits,
-          templateName: BRIDGE_TEMPLATE_NAME,
-          lang: BRIDGE_TEMPLATE_LANG,
-          status: e?.status || 0,
-          body: e?.body || String(e)
-        }));
-      }
-    }
-
-    // Store in global buffer instead of Pub/Sub
+    // Store in global buffer
     global.LAST_INBOUND = {
       id: smsId,
       from: toDigits,
@@ -423,11 +378,106 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
       raw: (raw && raw.length <= 4096) ? evt : "[raw-too-large]"
     };
 
-    console.log(JSON.stringify({ event: "wa_send_ok_inbound", sms_id: smsId, to: toDigits, text_len: incoming.length, fallback: true }));
-    return res.status(200).json({ status: "ok", processed: true, message_id: smsId });
-  } catch (e) {
-    console.error("[inbound] error", e);
-    return res.status(500).json({ error: "server_error" });
+    // Look up lift by MSISDN
+    const liftResult = await query('SELECT * FROM lifts WHERE msisdn = $1', [toDigits]);
+    if (liftResult.rows.length === 0) {
+      logEvent('lift_not_found', { sms_id: smsId, lift_msisdn: plus(toDigits) });
+      return res.status(404).json({ ok: false, error: 'lift_not_found', id: smsId });
+    }
+
+    const lift = liftResult.rows[0];
+    logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
+
+    // Get all linked contacts
+    const contactsResult = await query(
+      `SELECT c.*, lc.relation
+       FROM contacts c
+       JOIN lift_contacts lc ON c.id = lc.contact_id
+       WHERE lc.lift_id = $1`,
+      [lift.id]
+    );
+
+    if (contactsResult.rows.length === 0) {
+      logEvent('no_contacts', { sms_id: smsId, lift_id: lift.id });
+      return res.status(404).json({ ok: false, error: 'no_contacts_linked', id: smsId });
+    }
+
+    const contacts = contactsResult.rows;
+    logEvent('contacts_found', { sms_id: smsId, lift_id: lift.id, contact_count: contacts.length });
+
+    // Send WhatsApp template to all contacts
+    const tplName = BRIDGE_TEMPLATE_NAME;
+    const tplLang = BRIDGE_TEMPLATE_LANG;
+    const results = [];
+
+    for (const contact of contacts) {
+      const to = contact.primary_msisdn;
+      const displayName = contact.display_name || 'Contact';
+      
+      if (!to) {
+        logEvent('contact_no_phone', { sms_id: smsId, contact_id: contact.id, display_name: displayName });
+        continue;
+      }
+
+      if (tplName) {
+        console.log(`[inbound] Sending template to ${displayName} (${to}):`, { name: tplName, lang: tplLang });
+        try {
+          const r = await sendTemplateRaw({
+            to,
+            name: tplName,
+            langCode: tplLang,
+            paramText: `${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`
+          });
+          console.log(`[inbound] Template sent successfully to ${displayName}:`, r);
+          logEvent('wa_template_ok', { 
+            sms_id: smsId, 
+            contact_id: contact.id,
+            contact_name: displayName,
+            to: plus(to), 
+            provider_id: r?.id || null, 
+            templateName: tplName, 
+            lang: tplLang 
+          });
+          results.push({ contact_id: contact.id, to, status: 'sent', template: true });
+        } catch (e) {
+          const status = e?.status || null;
+          const errBody = e?.body || e?.message || String(e);
+          console.error(`[inbound] Template failed for ${displayName}:`, { status, body: errBody });
+          logEvent('wa_template_fail', { 
+            sms_id: smsId, 
+            contact_id: contact.id,
+            contact_name: displayName,
+            to: plus(to), 
+            status, 
+            body: errBody 
+          });
+          results.push({ contact_id: contact.id, to, status: 'failed', error: errBody });
+        }
+      } else {
+        console.log('[inbound] No template name configured, skipping template');
+      }
+    }
+
+    const successCount = results.filter(r => r.status === 'sent').length;
+    logEvent('wa_batch_complete', { 
+      sms_id: smsId, 
+      lift_id: lift.id, 
+      total: results.length, 
+      success: successCount, 
+      failed: results.length - successCount 
+    });
+
+    return res.status(202).json({ 
+      ok: true, 
+      id: smsId, 
+      lift_id: lift.id,
+      contacts_notified: successCount,
+      total_contacts: results.length,
+      results 
+    });
+  } catch (err) {
+    logEvent('handler_error', { error: String(err && err.stack || err) });
+    return res.status(500).json({ ok: false, error: 'internal' });
   }
 });
 

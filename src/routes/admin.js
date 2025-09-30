@@ -266,4 +266,39 @@ router.get('/messages', async (req, res) => {
   }
 });
 
+// Initialize tickets table in production database
+router.post('/db/init-tickets', async (req, res) => {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS tickets (
+        id SERIAL PRIMARY KEY,
+        lift_id INTEGER NOT NULL REFERENCES lifts(id),
+        sms_id VARCHAR(128) NOT NULL,
+        status VARCHAR(20) DEFAULT 'open',
+        button_clicked VARCHAR(50),
+        responded_by UUID REFERENCES contacts(id),
+        resolved_at TIMESTAMP WITH TIME ZONE,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+      )
+    `);
+    
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_lift_id ON tickets(lift_id)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status)`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_tickets_sms_id ON tickets(sms_id)`);
+    
+    return res.json({
+      ok: true,
+      message: 'Tickets table initialized successfully'
+    });
+  } catch (error) {
+    console.error('[admin/db/init-tickets] error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: { message: error.message } 
+    });
+  }
+});
+
 module.exports = router;
