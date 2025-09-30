@@ -501,6 +501,40 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
   }
 });
 
+// Helper function to send message to all contacts for a lift
+async function notifyAllContactsForLift(liftId, message) {
+  try {
+    const contactsResult = await query(
+      `SELECT c.primary_msisdn, c.display_name 
+       FROM contacts c
+       JOIN lift_contacts lc ON c.id = lc.contact_id
+       WHERE lc.lift_id = $1`,
+      [liftId]
+    );
+    
+    const results = [];
+    for (const contact of contactsResult.rows) {
+      try {
+        await sendTextViaBridge({
+          baseUrl: BRIDGE_BASE_URL,
+          apiKey: BRIDGE_API_KEY,
+          to: contact.primary_msisdn,
+          text: message
+        });
+        results.push({ name: contact.display_name, status: 'sent' });
+        console.log(`[notify] Sent to ${contact.display_name} (${contact.primary_msisdn})`);
+      } catch (err) {
+        console.error(`[notify] Failed to send to ${contact.display_name}:`, err);
+        results.push({ name: contact.display_name, status: 'failed', error: err.message });
+      }
+    }
+    return results;
+  } catch (err) {
+    console.error('[notify] Error getting contacts:', err);
+    throw err;
+  }
+}
+
 // WhatsApp webhook verification (GET request)
 // Note: Since Woosh Bridge sits between Meta and our app, this may not be called.
 // However, we implement it for completeness and potential direct Meta integration.
@@ -598,7 +632,9 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     // Find most recent open ticket (assume it's the one they're responding to)
     const ticketResult = await query(
-      `SELECT t.* FROM tickets t
+      `SELECT t.*, l.building || ' - ' || l.lift_identifier as lift_name
+       FROM tickets t
+       JOIN lifts l ON t.lift_id = l.id
        JOIN lift_contacts lc ON t.lift_id = lc.lift_id
        WHERE lc.contact_id = $1 AND t.status = 'open'
        ORDER BY t.created_at DESC
@@ -619,25 +655,124 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     let shouldClose = false;
     let confirmationMessage = '';
     let buttonType = '';
+    let sendFollowUpTemplate = false;
     
-    if (buttonIdentifier.includes('test')) {
+    // Check specific button types first (order matters!)
+    let notifyAllContacts = false;
+    
+    if (buttonIdentifier.includes('yes')) {
+      // Yes response to entrapment follow-up (check BEFORE entrapment)
+      shouldClose = true;
+      buttonType = 'entrapment_yes';
+      notifyAllContacts = true;
+      confirmationMessage = `Ticket closed - Service provider has been notified of entrapment at ${ticket.lift_name || 'Lift'}.`;
+    } else if (buttonIdentifier.includes('no')) {
+      // No response to entrapment follow-up (check BEFORE entrapment)
+      // Start reminder system - send reminder every 5 minutes, 3 times
+      buttonType = 'entrapment_no';
+      console.log('[webhook/whatsapp] Entrapment NO clicked, starting reminder system');
+    } else if (buttonIdentifier.includes('test')) {
       shouldClose = true;
       buttonType = 'test';
-      confirmationMessage = 'Test confirmed. Ticket closed.';
+      notifyAllContacts = true;
+      confirmationMessage = `Test alert resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
     } else if (buttonIdentifier.includes('maintenance') || buttonIdentifier.includes('service')) {
       shouldClose = true;
       buttonType = 'maintenance';
-      confirmationMessage = 'Maintenance/Service confirmed. Ticket closed.';
+      notifyAllContacts = true;
+      confirmationMessage = `Maintenance/Service request resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
     } else if (buttonIdentifier.includes('entrapment')) {
-      shouldClose = true;
+      // Entrapment requires follow-up question (check AFTER yes/no)
+      sendFollowUpTemplate = true;
       buttonType = 'entrapment';
-      confirmationMessage = 'Entrapment confirmed. Ticket closed.';
+      console.log('[webhook/whatsapp] Entrapment clicked, sending follow-up template');
     } else {
       console.log('[webhook/whatsapp] Unknown button type:', buttonIdentifier);
       return res.status(200).json({ status: 'ok', processed: false, reason: 'unknown_button' });
     }
     
-    // Update ticket
+    // Handle follow-up template for entrapment
+    if (sendFollowUpTemplate) {
+      try {
+        const { sendTemplateViaBridge } = require('./lib/bridge');
+        
+        // Send follow-up template asking if service provider was notified
+        await sendTemplateViaBridge({
+          baseUrl: BRIDGE_BASE_URL,
+          apiKey: BRIDGE_API_KEY,
+          to: fromNumber,
+          name: 'growthpoint_entrapment_confirmed',
+          languageCode: 'en'
+        });
+        
+        console.log('[webhook/whatsapp] Follow-up template sent');
+        
+        // Update ticket to track that entrapment was clicked
+        await query(
+          `UPDATE tickets 
+           SET button_clicked = $1, 
+               responded_by = $2, 
+               updated_at = now()
+           WHERE id = $3`,
+          [buttonType, contact.id, ticket.id]
+        );
+        
+        logEvent('entrapment_followup_sent', { 
+          ticket_id: ticket.id, 
+          contact_id: contact.id,
+          contact_name: contact.display_name 
+        });
+        
+      } catch (err) {
+        console.error('[webhook/whatsapp] Failed to send follow-up template:', err);
+      }
+    }
+    
+    // Handle NO button - start reminder system
+    if (buttonType === 'entrapment_no') {
+      // Send first reminder immediately
+      const reminderMessage = `⚠️ REMINDER 1/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Reply YES when notified.`;
+      try {
+        await sendTextViaBridge({
+          baseUrl: BRIDGE_BASE_URL,
+          apiKey: BRIDGE_API_KEY,
+          to: fromNumber,
+          text: reminderMessage
+        });
+        
+        // Update ticket with reminder count = 1 (first reminder sent)
+        await query(
+          `UPDATE tickets 
+           SET button_clicked = $1, 
+               responded_by = $2, 
+               reminder_count = 1,
+               last_reminder_at = now(),
+               updated_at = now()
+           WHERE id = $3`,
+          [buttonType, contact.id, ticket.id]
+        );
+        
+        console.log('[webhook/whatsapp] First reminder sent (1/3)');
+        
+        logEvent('entrapment_reminder_started', { 
+          ticket_id: ticket.id, 
+          contact_id: contact.id,
+          contact_name: contact.display_name,
+          reminder_count: 1
+        });
+      } catch (err) {
+        console.error('[webhook/whatsapp] Failed to send first reminder:', err);
+      }
+      
+      return res.status(200).json({ 
+        status: 'ok', 
+        processed: true, 
+        ticket_id: ticket.id,
+        reminder_started: true
+      });
+    }
+    
+    // Close ticket and send confirmation
     if (shouldClose) {
       await query(
         `UPDATE tickets 
@@ -657,17 +792,27 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         contact_name: contact.display_name 
       });
       
-      // Send confirmation message
-      try {
-        await sendTextViaBridge({
-          baseUrl: BRIDGE_BASE_URL,
-          apiKey: BRIDGE_API_KEY,
-          to: fromNumber,
-          text: confirmationMessage
-        });
-        console.log('[webhook/whatsapp] Confirmation sent');
-      } catch (err) {
-        console.error('[webhook/whatsapp] Failed to send confirmation:', err);
+      // Send confirmation message to all contacts if required
+      if (notifyAllContacts) {
+        try {
+          const results = await notifyAllContactsForLift(ticket.lift_id, confirmationMessage);
+          console.log('[webhook/whatsapp] Notified all contacts:', results);
+        } catch (err) {
+          console.error('[webhook/whatsapp] Failed to notify all contacts:', err);
+        }
+      } else {
+        // Send confirmation to single contact
+        try {
+          await sendTextViaBridge({
+            baseUrl: BRIDGE_BASE_URL,
+            apiKey: BRIDGE_API_KEY,
+            to: fromNumber,
+            text: confirmationMessage
+          });
+          console.log('[webhook/whatsapp] Confirmation sent');
+        } catch (err) {
+          console.error('[webhook/whatsapp] Failed to send confirmation:', err);
+        }
       }
     }
     
@@ -730,6 +875,93 @@ if (typeof global.LAST_INBOUND === "undefined") global.LAST_INBOUND = null;
 // Error handling middleware
 app.use(errorHandler);
 
+// Background job to check for pending reminders
+async function checkPendingReminders() {
+  try {
+    // Find tickets that need reminders:
+    // - Status is open
+    // - button_clicked is 'entrapment_no'
+    // - reminder_count < 3
+    // - last_reminder_at was more than 5 minutes ago
+    const result = await query(
+      `SELECT t.*, l.building || ' - ' || l.lift_identifier as lift_name,
+              c.primary_msisdn, c.display_name
+       FROM tickets t
+       JOIN lifts l ON t.lift_id = l.id
+       JOIN contacts c ON t.responded_by = c.id
+       WHERE t.status = 'open'
+         AND t.button_clicked = 'entrapment_no'
+         AND t.reminder_count < 3
+         AND t.last_reminder_at < NOW() - INTERVAL '5 minutes'`
+    );
+    
+    for (const ticket of result.rows) {
+      const newCount = (ticket.reminder_count || 0) + 1;
+      console.log(`[reminder] Processing ticket ${ticket.id}, reminder ${newCount}/3`);
+      
+      if (newCount >= 3) {
+        // Final reminder failed - close ticket with note
+        await query(
+          `UPDATE tickets 
+           SET status = 'closed',
+               reminder_count = $1,
+               resolved_at = now(),
+               closure_note = 'Auto-closed: Service provider notification not confirmed after 3 reminders',
+               updated_at = now()
+           WHERE id = $2`,
+          [newCount, ticket.id]
+        );
+        
+        const finalMessage = `⚠️ ALERT: Ticket auto-closed for ${ticket.lift_name}. Service provider notification was NOT confirmed after 3 reminders. Please follow up immediately.`;
+        try {
+          await notifyAllContactsForLift(ticket.lift_id, finalMessage);
+          console.log(`[reminder] Ticket ${ticket.id} auto-closed, all contacts notified`);
+          
+          logEvent('ticket_auto_closed', {
+            ticket_id: ticket.id,
+            lift_id: ticket.lift_id,
+            reminder_count: newCount
+          });
+        } catch (err) {
+          console.error(`[reminder] Failed to notify contacts for ticket ${ticket.id}:`, err);
+        }
+      } else {
+        // Send reminder and increment count
+        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Reply YES when notified.`;
+        try {
+          await sendTextViaBridge({
+            baseUrl: BRIDGE_BASE_URL,
+            apiKey: BRIDGE_API_KEY,
+            to: ticket.primary_msisdn,
+            text: reminderMessage
+          });
+          
+          await query(
+            `UPDATE tickets 
+             SET reminder_count = $1,
+                 last_reminder_at = now(),
+                 updated_at = now()
+             WHERE id = $2`,
+            [newCount, ticket.id]
+          );
+          
+          console.log(`[reminder] Sent reminder ${newCount}/3 for ticket ${ticket.id}`);
+          
+          logEvent('entrapment_reminder_sent', {
+            ticket_id: ticket.id,
+            reminder_count: newCount,
+            contact: ticket.display_name
+          });
+        } catch (err) {
+          console.error(`[reminder] Failed to send reminder for ticket ${ticket.id}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[reminder] Error checking pending reminders:', err);
+  }
+}
+
 // Server startup
 const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = '0.0.0.0';
@@ -744,6 +976,10 @@ async function start() {
       console.warn('[startup] Database connection failed:', dbError.message);
       console.log('[startup] Continuing without database...');
     }
+
+    // Start reminder check interval (every 1 minute)
+    setInterval(checkPendingReminders, 60 * 1000);
+    console.log('[startup] Reminder checker started (runs every 60 seconds)');
 
     const server = app.listen(PORT, HOST, () => {
       console.log(JSON.stringify({ level: 'info', msg: 'server_listening', port: PORT, host: HOST, platform: 'replit' }));
