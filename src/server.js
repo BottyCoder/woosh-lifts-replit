@@ -387,7 +387,7 @@ if (typeof global.LAST_INBOUND === "undefined") global.LAST_INBOUND = null;
 app.use(errorHandler);
 
 // Server startup
-const PORT = parseInt(process.env.PORT || '8080', 10);
+const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = '0.0.0.0';
 
 async function start() {
