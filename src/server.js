@@ -13,6 +13,7 @@ const { errorHandler } = require("./mw/error");
 const { getPagination, paginateQuery } = require("./pagination");
 const smsRoutes = require('./routes/sms');
 const sendRoutes = require("./routes/send");
+const adminRoutes = require('./routes/admin');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -28,6 +29,9 @@ const app = express();
 const jsonParser = express.json({ limit: '128kb' });
 app.use(morgan("tiny"));
 app.use(requestLogger);
+
+// Serve static files from public directory
+app.use(express.static('public'));
 
 // CORS for admin routes
 app.use('/admin/*', (req, res, next) => {
@@ -69,6 +73,7 @@ app.get("/", (_req, res) => res.status(200).send("woosh-lifts: ok"));
 // Mount SMS routes
 app.use('/sms', smsRoutes);
 app.use('/send', sendRoutes);
+app.use('/admin', adminRoutes);
 
 // Admin status endpoint
 app.get('/admin/status', async (req, res) => {
