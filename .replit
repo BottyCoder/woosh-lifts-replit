@@ -1,0 +1,16 @@
+run = "npm start"
+entrypoint = "src/server.js"
+language = "nodejs"
+
+[nix]
+channel = "stable-22_11"
+
+[deployment]
+run = ["sh", "-c", "npm start"]
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[env]
+PATH = "/home/runner/$REPL_SLUG/.config/npm/node_modules/.bin:$PATH"
