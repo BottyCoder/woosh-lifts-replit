@@ -1,0 +1,92 @@
+HOW WOOSH BRIDGE WEBHOOK FORWARDING WORKS FOR BUTTON CLICKS
+Woosh Bridge has a tenant-based callback system that forwards ALL WhatsApp events (including button clicks) to each tenant's configured webhook URL.
+CONFIGURATION METHOD
+There are 2 ways to configure the callback URL:
+Method 1: Database Configuration (Recommended)
+Set the callback_url when creating or updating the tenant in the router.tenants table.
+When creating a new tenant, include the callback_url field:
+name: 'GrowthPoint'
+wa_phone_id: PHONE_NUMBER_ID
+wa_token: ACCESS_TOKEN
+display_phone_number: '27690232755'
+callback_url: 'https://gplifts.woosh.ai/webhooks/whatsapp'
+status: 'active'
+To update an existing tenant:
+UPDATE router.tenants SET callback_url = 'https://gplifts.woosh.ai/webhooks/whatsapp' WHERE name = 'GrowthPoint';
+WHAT EVENTS GET FORWARDED
+Woosh Bridge forwards:
+Inbound Messages (including button responses)
+Status Updates (delivered, read, failed)
+All Interactive Events (button clicks, list replies)
+BUTTON CLICK PAYLOAD FORMAT
+When a user clicks a button in an interactive message, GrowthPoint will receive a JSON payload with this structure:
+The top level has "object": "whatsapp_business_account" and an "entry" array.
+Inside entry, there's a "changes" array with a "value" object containing:
+messaging_product: "whatsapp"
+metadata: includes display_phone_number and phone_number_id
+contacts: array with user profile info including name and wa_id
+messages: array with the actual message data
+The message object for button clicks includes:
+from: the user's WhatsApp number (e.g., "27821234567")
+id: WhatsApp message ID (e.g., "wamid.XXXXXXXXX")
+timestamp: Unix timestamp
+type: "interactive"
+interactive: object with type "button_reply" and a button_reply object containing:
+id: the button ID you defined (e.g., "get_deals")
+title: the button title text (e.g., "Get Deals")
+KEY FIELDS FOR PARSING BUTTON RESPONSES
+To extract the button click information:
+Button ID: body.entry[0].changes[0].value.messages[0].interactive.button_reply.id
+Button Title: body.entry[0].changes[0].value.messages[0].interactive.button_reply.title
+User Number: body.entry[0].changes[0].value.messages[0].from
+Message ID: body.entry[0].changes[0].value.messages[0].id
+Check if message.type equals "interactive" and message.interactive.type equals "button_reply" to identify button clicks.
+AUTHENTICATION AND HEADERS
+Woosh Bridge sends webhooks with these headers:
+Content-Type: application/json
+User-Agent: Woosh-Bridge/1.0
+NOTE: Currently, Woosh Bridge does NOT add authentication headers by default. If GrowthPoint needs authentication, there are 2 options:
+Option A: IP Allowlist
+GrowthPoint can allowlist your Woosh Bridge IP address on their firewall.
+Option B: Add Auth Header Support
+We can modify Woosh Bridge to include an authorization header. This would require adding a callback_auth_token field to the tenants table and including it in the webhook forwarding logic.
+GROWTHPOINT WEBHOOK ENDPOINT REQUIREMENTS
+Their endpoint at https://gplifts.woosh.ai/webhooks/whatsapp needs to handle two types of requests:
+Webhook Verification (GET request)
+Meta requires webhook verification. When they receive a GET request with query parameters hub.mode, hub.verify_token, and hub.challenge:
+Check if hub.mode equals "subscribe"
+Check if hub.verify_token matches their expected token
+If both match, respond with 200 status and send back the hub.challenge value
+Otherwise, respond with 403 status
+Webhook Events (POST request)
+When they receive a POST request with JSON body:
+Respond immediately with 200 status (Meta requires response within 20 seconds)
+Process the webhook payload asynchronously
+Extract messages from body.entry[0].changes[0].value.messages
+For each message, check if type is "interactive" and interactive.type is "button_reply"
+Extract button_reply.id and from field to handle the button click
+TESTING THE INTEGRATION
+Step 1: Set the callback URL in the database
+UPDATE router.tenants SET callback_url = 'https://gplifts.woosh.ai/webhooks/whatsapp' WHERE name = 'GrowthPoint';
+Step 2: Send a test interactive message using the Woosh Bridge API
+POST to https://wa.woosh.ai/router/send with:
+Header: X-Api-Key: GROWTHPOINT_API_KEY
+Header: Content-Type: application/json
+Body: JSON with "to" (recipient number), "type": "interactive", and "interactive" object containing:
+"type": "button"
+"body": object with "text" field
+"action": object with "buttons" array, each button having "type": "reply" and "reply": object with "id" and "title"
+Step 3: Click the button on the phone
+When the user clicks a button, GrowthPoint's webhook should receive the event within 1-2 seconds.
+SUMMARY FOR GROWTHPOINT
+Configuration:
+Set callback_url = 'https://gplifts.woosh.ai/webhooks/whatsapp' in the router.tenants table for the GrowthPoint tenant.
+What They'll Receive:
+Full WhatsApp webhook payload in the same format Meta sends
+Button clicks will be in message.interactive.button_reply
+No authentication headers by default (can be added if needed)
+Their Endpoint Must:
+Respond with 200 status within 20 seconds
+Handle GET requests for webhook verification
+Parse button_reply.id and button_reply.title from the payload to identify which button was clicked
+If they need authentication headers added to the webhook forwarding, let me know and I can show you how to add that support to Woosh Bridge.

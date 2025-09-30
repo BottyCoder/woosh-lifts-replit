@@ -501,9 +501,63 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
   }
 });
 
-// WhatsApp webhook for button clicks
+// WhatsApp webhook verification (GET request)
+// Note: Since Woosh Bridge sits between Meta and our app, this may not be called.
+// However, we implement it for completeness and potential direct Meta integration.
+app.get('/webhooks/whatsapp', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  
+  const expectedToken = process.env.WEBHOOK_VERIFY_TOKEN;
+  
+  console.log('[webhook/whatsapp] Verification request:', { 
+    mode, 
+    tokenProvided: !!token,
+    tokenConfigured: !!expectedToken
+  });
+  
+  // If no token is configured, skip validation (Woosh Bridge handles Meta verification)
+  if (!expectedToken) {
+    console.log('[webhook/whatsapp] No WEBHOOK_VERIFY_TOKEN configured, accepting verification');
+    if (mode === 'subscribe' && challenge) {
+      return res.status(200).send(challenge);
+    }
+    return res.status(403).send('Forbidden');
+  }
+  
+  // If token is configured, validate it
+  if (mode === 'subscribe' && token === expectedToken) {
+    console.log('[webhook/whatsapp] Verification successful');
+    return res.status(200).send(challenge);
+  }
+  
+  console.log('[webhook/whatsapp] Verification failed - token mismatch or invalid mode');
+  return res.status(403).send('Forbidden');
+});
+
+// WhatsApp webhook for button clicks (POST request)
 app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
   try {
+    // Validate Authorization header
+    const expectedToken = process.env.WEBHOOK_AUTH_TOKEN;
+    const authHeader = req.headers.authorization;
+    
+    if (expectedToken) {
+      const providedToken = authHeader?.replace(/^Bearer\s+/i, '');
+      
+      if (!providedToken || providedToken !== expectedToken) {
+        console.log('[webhook/whatsapp] Authentication failed:', {
+          headerProvided: !!authHeader,
+          tokenMatch: false
+        });
+        return res.status(401).json({ status: 'error', error: 'Unauthorized' });
+      }
+      console.log('[webhook/whatsapp] Authentication successful');
+    } else {
+      console.log('[webhook/whatsapp] WARNING: No WEBHOOK_AUTH_TOKEN configured - accepting unauthenticated request');
+    }
+    
     console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
     
     const entry = req.body.entry?.[0];
@@ -511,13 +565,14 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     const value = change?.value;
     const message = value?.messages?.[0];
     
-    if (!message || message.type !== 'button') {
-      console.log('[webhook/whatsapp] Not a button click, ignoring');
+    // Check for interactive button reply (Woosh Bridge format)
+    if (!message || message.type !== 'interactive' || message.interactive?.type !== 'button_reply') {
+      console.log('[webhook/whatsapp] Not an interactive button click, ignoring');
       return res.status(200).json({ status: 'ok', processed: false });
     }
     
-    const buttonPayload = message.button?.payload;
-    const buttonText = message.button?.text;
+    const buttonPayload = message.interactive?.button_reply?.id;
+    const buttonText = message.interactive?.button_reply?.title;
     const fromNumber = message.from;
     const contextMessageId = message.context?.id;
     
