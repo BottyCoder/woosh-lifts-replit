@@ -83,13 +83,7 @@ loadRegistry();
 // Routes
 app.get("/", (_req, res) => res.status(200).send("woosh-lifts: ok"));
 
-// Mount routes
-app.use('/sms', smsRoutes);
-app.use('/send', sendRoutes);
-app.use('/admin', adminRoutes);
-app.use('/api/status', statusRoutes);
-
-// Admin status endpoint
+// Admin status endpoint (public - no auth required)
 app.get('/admin/status', async (req, res) => {
   try {
     const templateEnabled = Boolean(process.env.BRIDGE_TEMPLATE_NAME && process.env.BRIDGE_TEMPLATE_LANG);
@@ -137,6 +131,12 @@ app.get('/admin/status', async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
   }
 });
+
+// Mount routes
+app.use('/sms', smsRoutes);
+app.use('/send', sendRoutes);
+app.use('/admin', adminRoutes);
+app.use('/api/status', statusRoutes);
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
