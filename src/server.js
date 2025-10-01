@@ -14,6 +14,7 @@ const { getPagination, paginateQuery } = require("./pagination");
 const smsRoutes = require('./routes/sms');
 const sendRoutes = require("./routes/send");
 const adminRoutes = require('./routes/admin');
+const statusRoutes = require('./routes/status');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -82,10 +83,11 @@ loadRegistry();
 // Routes
 app.get("/", (_req, res) => res.status(200).send("woosh-lifts: ok"));
 
-// Mount SMS routes
+// Mount routes
 app.use('/sms', smsRoutes);
 app.use('/send', sendRoutes);
 app.use('/admin', adminRoutes);
+app.use('/api/status', statusRoutes);
 
 // Admin status endpoint
 app.get('/admin/status', async (req, res) => {

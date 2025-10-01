@@ -22,6 +22,7 @@ Preferred communication style: Simple, everyday language.
 - `/sms/*` - Inbound SMS webhook handlers  
 - `/send` - Outbound message sending
 - `/webhooks/whatsapp` - WhatsApp event callbacks from Woosh Bridge
+- `/api/status/webhook` - WhatsApp message delivery/read receipt status updates
 
 **Authentication Strategy**:
 - Admin routes protected by token-based authentication (`X-Admin-Token` or `Authorization: Bearer`)
@@ -79,8 +80,19 @@ Preferred communication style: Simple, everyday language.
    - Foreign key to contacts
    - `message_id` (VARCHAR 255, UNIQUE): The wa_id from Woosh Bridge response
    - `message_kind` (VARCHAR 50): Type of message (initial, reminder, entrapment_followup, entrapment_reminder)
+   - Status tracking: `delivered_at`, `read_at`, `current_status` (sent/delivered/read/failed)
+   - Error tracking: `error_code`, `error_message`
    - Created timestamp
-   - **Purpose**: Enables precise matching of button clicks to correct ticket even with multiple simultaneous emergencies
+   - **Purpose**: Enables precise matching of button clicks to correct ticket even with multiple simultaneous emergencies, with full delivery/read receipt tracking
+
+7. **messages** - General message audit log with delivery status
+   - Primary key: `id` (serial)
+   - Foreign key to lifts
+   - Direction, type, status fields
+   - `wa_id` (VARCHAR 255): WhatsApp message ID for status tracking
+   - Status tracking: `delivered_at`, `read_at`, `current_status` (sent/delivered/read/failed)
+   - Error tracking: `error_code`, `error_message`
+   - JSONB meta field for flexible metadata storage
 
 **Query Patterns**:
 - Cursor-based pagination for message history (base64 encoded cursors with last_id and last_ts)
@@ -91,14 +103,20 @@ Preferred communication style: Simple, everyday language.
 
 **WhatsApp Messaging - Woosh Bridge**:
 - Base URL: `https://wa.woosh.ai` (configurable via `BRIDGE_BASE_URL`)
-- API Endpoint: `/v1/send`
-- Authentication: Tenant key via `x-tenant-key` header (BRIDGE_API_KEY env var)
+- API Endpoints:
+  - `/v1/send` - Template and text messages (auth via `x-tenant-key`)
+  - `/api/messages/send` - Interactive messages (auth via `X-Api-Key`)
+- Authentication: Tenant key via headers (BRIDGE_API_KEY env var)
 - WhatsApp Business Number: +27 69 023 2755 (Growthpoint)
 - Template-based messaging using `growthpoint_lift_emergency_v2` template with 1 parameter (lift location)
 - Template language: `en` (must match exact language code in WhatsApp Manager)
 - Follow-up template: `growthpoint_entrapment_confirmed` (YES button only, no NO button)
-- Webhook callbacks for interactive button responses
+- Webhook callbacks for interactive button responses and message status updates
 - Button click payload structure: `entry[0].changes[0].value.messages[0].interactive.button_reply.id`
+- **Status Updates**: Delivery and read receipts via `/api/status/webhook`
+  - Status types: sent, delivered, read, failed
+  - Includes timestamps and error details
+  - Matched to messages via `wa_id` field
 
 **SMS Messaging - SMS Portal**:
 - Inbound webhook at `/sms/plain`
