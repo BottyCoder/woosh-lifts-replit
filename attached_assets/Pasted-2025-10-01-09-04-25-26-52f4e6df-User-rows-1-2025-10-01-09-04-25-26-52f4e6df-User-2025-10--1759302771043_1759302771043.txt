@@ -1,0 +1,148 @@
+2025-10-01 09:04:25.26
+52f4e6df
+User
+rows: 1
+2025-10-01 09:04:25.26
+52f4e6df
+User
+}
+2025-10-01 09:04:25.26
+52f4e6df
+User
+{"event":"initial_alert_reminder_sent","ts":"2025-10-01T07:04:25.264Z","ticket_id":13,"reminder_count":1,"lift_name":"Test Site - Test Building"}
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"changes": [
+2025-10-01 09:04:28.56
+52f4e6df
+User
+{
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"metadata": {
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"statuses": [
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBI5QTY2QkQxRDQzNTg0OTdFODQA",
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"status": "sent",
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"expiration_timestamp": "1759302265",
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"type": "utility"
+2025-10-01 09:04:28.56
+52f4e6df
+User
+},
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"pricing": {
+2025-10-01 09:04:28.56
+52f4e6df
+User
+]
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"field": "messages"
+2025-10-01 09:04:28.67
+52f4e6df
+User
+{
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"changes": [
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"value": {
+2025-10-01 09:04:28.67
+52f4e6df
+User
+},
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"statuses": [
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"timestamp": "1759302265",
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"origin": {
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"billable": false,
+2025-10-01 09:04:28.67
+52f4e6df
+User
+"pricing_model": "PMP",
+2025-10-01 09:04:28.67
+52f4e6df
+User
+]
+2025-10-01 09:04:28.67
+52f4e6df
+User
+}
+2025-10-01 09:04:28.67
+52f4e6df
+User
+[webhook/whatsapp] Not a button click, ignoring: { hasMessage: false, messageType: undefined, reason: 'no_message' }
+2025-10-01 09:04:28.56
+52f4e6df
+User
+[HTTP] POST /webhooks/whatsapp from 127.0.0.1
+2025-10-01 09:04:28.56
+52f4e6df
+User
+[HTTP] Headers: {"host":"gplifts.woosh.ai","user-agent":"node","content-length":"608","accept":"*/*","accept-encoding":"br, gzip, deflate","accept-language":"*","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3NTkyNDQ0ODJ9.uqlQIPrenJAqw-h-c49tOQaPjEu0Rpx8rh84eXYLkiY","content-type":"application/json","sec-fetch-mode":"cors","server-timing":"depproxy;dur=1759302268549, pid1req;dur=1759302268561","via":"1.1 google","x-cloud-trace-context":"85abf7657833ed35788906dfc1890de9/4134652477282294339","x-forwarded-for":"34.34.233.153, 34.111.179.208, 35.191.74.67","x-forwarded-host":"gplifts.woosh.ai","x-forwarded-proto":"https","x-replit-user-bio":"","x-replit-user-id":"","x-replit-user-name":"","x-replit-user-profile-image":"","x-replit-user-roles":"","x-replit-user-teams":"","x-replit-user-url":""}
+2025-10-01 09:04:28.56
+52f4e6df
+User
+[webhook/whatsapp] Authentication successful
+2025-10-01 09:04:28.56
+52f4e6df
+User
+[webhook/whatsapp] Received: {
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"object": "whatsapp_business_account",
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"entry": [
+2025-10-01 09:04:28.56
+52f4e6df
+User
+{
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"id": "620143974365970",
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"value": {
+2025-10-01 09:04:28.56
+52f4e6df
+User
+"messaging_product": "whatsapp",
