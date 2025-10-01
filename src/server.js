@@ -1129,12 +1129,12 @@ async function processInitialAlertReminder(ticket) {
     await query(
       `UPDATE tickets 
        SET status = 'closed',
-           reminder_count = $1,
+           reminder_count = 3,
            resolved_at = now(),
            closure_note = 'Auto-closed: No response to emergency alert after 3 reminders',
            updated_at = now()
        WHERE id = $2`,
-      [newCount, ticket.id]
+      [ticket.id]
     );
     
     const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
@@ -1146,7 +1146,7 @@ async function processInitialAlertReminder(ticket) {
       logEvent('ticket_auto_closed_no_response', {
         ticket_id: ticket.id,
         lift_id: ticket.lift_id,
-        reminder_count: newCount
+        reminder_count: 3
       });
     } catch (err) {
       console.error(`[reminder] Failed to send escalation for ticket ${ticket.id}:`, err);
@@ -1287,12 +1287,12 @@ async function checkPendingReminders() {
         await query(
           `UPDATE tickets 
            SET status = 'closed',
-               reminder_count = $1,
+               reminder_count = 3,
                resolved_at = now(),
                closure_note = 'Auto-closed: Service provider notification not confirmed after 3 reminders',
                updated_at = now()
            WHERE id = $2`,
-          [newCount, ticket.id]
+          [ticket.id]
         );
         
         const finalMessage = `⚠️ ALERT: Ticket auto-closed for ${ticket.lift_name}. Service provider notification was NOT confirmed after 3 reminders. Please follow up immediately.`;
@@ -1303,7 +1303,7 @@ async function checkPendingReminders() {
           logEvent('ticket_auto_closed', {
             ticket_id: ticket.id,
             lift_id: ticket.lift_id,
-            reminder_count: newCount
+            reminder_count: 3
           });
         } catch (err) {
           console.error(`[reminder] Failed to notify contacts for ticket ${ticket.id}:`, err);
