@@ -921,7 +921,7 @@ async function checkPendingReminders() {
         }
       } else {
         // Send reminder and increment count
-        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Reply YES when notified.`;
+        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Press the YES button when notified.`;
         try {
           await sendTextViaBridge({
             baseUrl: BRIDGE_BASE_URL,

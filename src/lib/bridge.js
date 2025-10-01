@@ -89,4 +89,56 @@ async function sendTextViaBridge({ baseUrl, apiKey, to, text }) {
   return json;
 }
 
-module.exports = { sendTemplateViaBridge, sendTextViaBridge };
+async function sendInteractiveViaBridge({ baseUrl, apiKey, to, bodyText, buttons }) {
+  if (!apiKey) {
+    const err = new Error("missing BRIDGE_API_KEY");
+    err.code = "auth";
+    throw err;
+  }
+  const url = `${baseUrl.replace(/\/+$/,"")}/v1/send`;
+
+  const interactive = {
+    type: "button",
+    body: { text: bodyText },
+    action: { buttons: buttons.map(btn => ({ 
+      type: "reply", 
+      reply: { id: btn.id, title: btn.title } 
+    }))}
+  };
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort("timeout"), DEFAULT_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-tenant-key": apiKey },
+      body: JSON.stringify({ to, type: "interactive", interactive }),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(t);
+    const err = new Error(`bridge_fetch_failed: ${e?.message || String(e)}`);
+    err.code = "send_failed";
+    throw err;
+  }
+  clearTimeout(t);
+
+  const responseText = await res.text();
+  let json; try { json = responseText ? JSON.parse(responseText) : {}; } catch (_) { json = { raw: responseText }; }
+
+  if (res.status === 401 || res.status === 403) {
+    const err = new Error("bridge_auth");
+    err.code = "auth"; err.status = res.status; err.body = json;
+    throw err;
+  }
+  if (res.status < 200 || res.status >= 300) {
+    const err = new Error(`bridge_non_2xx_${res.status}`);
+    err.code = "send_failed"; err.status = res.status; err.body = json;
+    throw err;
+  }
+  return json;
+}
+
+module.exports = { sendTemplateViaBridge, sendTextViaBridge, sendInteractiveViaBridge };
