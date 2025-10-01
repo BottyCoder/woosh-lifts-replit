@@ -367,6 +367,7 @@ async function loadLifts() {
                         <th>MSISDN</th>
                         <th>Notes</th>
                         <th>Created</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -378,6 +379,10 @@ async function loadLifts() {
                             <td>${escapeHtml(lift.msisdn)}</td>
                             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(lift.notes || '-')}</td>
                             <td>${formatDateTime(lift.created_at)}</td>
+                            <td>
+                                <button class="btn-small" onclick="editLift(${lift.id})">Edit</button>
+                                <button class="btn-small btn-danger" onclick="deleteLift(${lift.id})">Delete</button>
+                            </td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -572,6 +577,152 @@ async function saveLift() {
     } catch (error) {
         console.error('Error saving lift:', error);
         alert('Error saving lift: ' + error.message);
+    }
+}
+
+// Edit Lift Function
+async function editLift(liftId) {
+    try {
+        const [liftsRes, contactsRes, liftContactsRes] = await Promise.all([
+            authFetch(`${BASE_URL}/admin/lifts`),
+            authFetch(`${BASE_URL}/admin/contacts`),
+            authFetch(`${BASE_URL}/admin/lifts/${liftId}/contacts`)
+        ]);
+
+        const liftsData = await liftsRes.json();
+        const contactsData = await contactsRes.json();
+        const liftContactsData = await liftContactsRes.json();
+
+        const lift = liftsData.data?.find(l => l.id === liftId);
+        if (!lift) {
+            alert('Lift not found');
+            return;
+        }
+
+        const allContacts = contactsData.data || [];
+        const linkedContacts = liftContactsData.data || [];
+        const linkedContactIds = linkedContacts.map(lc => lc.contact_id);
+
+        const modalHTML = `
+            <div class="modal-overlay" id="edit-lift-modal" onclick="if(event.target === this) closeEditLiftModal()">
+                <div class="modal-content" style="max-width: 800px;">
+                    <h3>Edit Lift #${lift.id}</h3>
+                    <div style="margin: 20px 0;">
+                        <p><strong>MSISDN:</strong> ${escapeHtml(lift.msisdn)}</p>
+                        <p><strong>Site:</strong> ${escapeHtml(lift.site_name || '-')}</p>
+                        <p><strong>Building:</strong> ${escapeHtml(lift.building || '-')}</p>
+                        <p><strong>Notes:</strong> ${escapeHtml(lift.notes || '-')}</p>
+                    </div>
+                    <h4>Linked Contacts</h4>
+                    <div id="linked-contacts-list" style="margin: 15px 0;">
+                        ${linkedContacts.length === 0 ? '<p>No contacts linked</p>' : linkedContacts.map(lc => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f5f5f5; margin: 5px 0; border-radius: 4px;">
+                                <span>${escapeHtml(lc.display_name)} (${escapeHtml(lc.primary_msisdn)})</span>
+                                <button class="btn-small btn-danger" onclick="unlinkContact(${liftId}, '${lc.contact_id}')">Unlink</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <h4>Add Contact</h4>
+                    <select id="add-contact-select" style="width: 100%; padding: 8px; margin: 10px 0;">
+                        <option value="">Select a contact...</option>
+                        ${allContacts.filter(c => !linkedContactIds.includes(c.id)).map(c => `
+                            <option value="${c.id}">${escapeHtml(c.display_name)} (${escapeHtml(c.primary_msisdn)})</option>
+                        `).join('')}
+                    </select>
+                    <button class="btn" onclick="linkContact(${liftId})">Link Contact</button>
+                    <button class="btn btn-secondary" onclick="closeEditLiftModal()">Close</button>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    } catch (error) {
+        console.error('Error loading lift details:', error);
+        alert('Error loading lift details: ' + error.message);
+    }
+}
+
+function closeEditLiftModal() {
+    const modal = document.getElementById('edit-lift-modal');
+    if (modal) modal.remove();
+    loadLifts();
+}
+
+async function linkContact(liftId) {
+    const select = document.getElementById('add-contact-select');
+    const contactId = select.value;
+
+    if (!contactId) {
+        alert('Please select a contact');
+        return;
+    }
+
+    try {
+        const response = await authFetch(`${BASE_URL}/admin/lifts/${liftId}/contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contact_id: contactId, relation: 'tenant' })
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Failed to link contact');
+        }
+
+        closeEditLiftModal();
+        editLift(liftId);
+
+    } catch (error) {
+        console.error('Error linking contact:', error);
+        alert('Error linking contact: ' + error.message);
+    }
+}
+
+async function unlinkContact(liftId, contactId) {
+    if (!confirm('Are you sure you want to unlink this contact?')) return;
+
+    try {
+        const response = await authFetch(`${BASE_URL}/admin/lifts/${liftId}/contacts/${contactId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Failed to unlink contact');
+        }
+
+        closeEditLiftModal();
+        editLift(liftId);
+
+    } catch (error) {
+        console.error('Error unlinking contact:', error);
+        alert('Error unlinking contact: ' + error.message);
+    }
+}
+
+async function deleteLift(liftId) {
+    if (!confirm('Are you sure you want to delete this lift? This cannot be undone.')) return;
+
+    try {
+        const response = await authFetch(`${BASE_URL}/admin/lifts/${liftId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Failed to delete lift');
+        }
+
+        alert('Lift deleted successfully!');
+        loadLifts();
+
+    } catch (error) {
+        console.error('Error deleting lift:', error);
+        alert('Error deleting lift: ' + error.message);
     }
 }
 
