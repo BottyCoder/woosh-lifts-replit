@@ -598,30 +598,37 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     const value = change?.value;
     const message = value?.messages?.[0];
     
-    // Check for interactive button reply (Woosh Bridge format)
-    if (!message || message.type !== 'interactive' || message.interactive?.type !== 'button_reply') {
-      console.log('[webhook/whatsapp] Not an interactive button click, ignoring:', {
+    // Check for button click - support both Woosh and Meta formats
+    let buttonPayload, buttonText, fromNumber;
+    
+    if (message?.type === 'button' && message.button) {
+      // Woosh Bridge actual format
+      buttonPayload = message.button.payload;
+      buttonText = message.button.text;
+      fromNumber = message.from;
+      console.log('[webhook/whatsapp] Button click (Woosh format):', { 
+        from: fromNumber, 
+        payload: buttonPayload, 
+        text: buttonText
+      });
+    } else if (message?.type === 'interactive' && message.interactive?.type === 'button_reply') {
+      // Meta Graph API standard format
+      buttonPayload = message.interactive.button_reply.id;
+      buttonText = message.interactive.button_reply.title;
+      fromNumber = message.from;
+      console.log('[webhook/whatsapp] Button click (Meta format):', { 
+        from: fromNumber, 
+        payload: buttonPayload, 
+        text: buttonText
+      });
+    } else {
+      console.log('[webhook/whatsapp] Not a button click, ignoring:', {
         hasMessage: !!message,
         messageType: message?.type,
-        interactiveType: message?.interactive?.type,
-        reason: !message ? 'no_message' : 
-                message.type !== 'interactive' ? 'not_interactive' : 
-                'not_button_reply'
+        reason: !message ? 'no_message' : 'not_button'
       });
       return res.status(200).json({ status: 'ok', processed: false });
     }
-    
-    const buttonPayload = message.interactive?.button_reply?.id;
-    const buttonText = message.interactive?.button_reply?.title;
-    const fromNumber = message.from;
-    const contextMessageId = message.context?.id;
-    
-    console.log('[webhook/whatsapp] Button click:', { 
-      from: fromNumber, 
-      payload: buttonPayload, 
-      text: buttonText,
-      contextId: contextMessageId 
-    });
     
     // Find contact by WhatsApp number
     const contactResult = await query(
