@@ -305,6 +305,14 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Log inbound SMS message to messages table
+    await query(
+      `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, meta)
+       VALUES ($1, $2, 'in', 'sms', 'received', $3, $4)`,
+      [lift.id, toDigits, incoming, JSON.stringify({ sms_id: smsId })]
+    );
+    console.log('[sms/direct] ✅ Logged inbound SMS to messages table');
+
     // Create ticket for this emergency with timer started
     const ticketResult = await query(
       `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
@@ -386,6 +394,19 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
               console.log(`[sms/direct] Saved message ID ${messageId} to ticket_messages`);
             } catch (msgErr) {
               console.error(`[sms/direct] Failed to save message to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `Emergency alert: ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [lift.id, to, messageBody, messageId, JSON.stringify({ template: tplName, ticket_id: ticket.id })]
+              );
+              console.log(`[sms/direct] ✅ Logged outbound WhatsApp template to messages table`);
+            } catch (logErr) {
+              console.error(`[sms/direct] Failed to log message to messages table:`, logErr);
             }
           }
           
@@ -507,6 +528,14 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Log inbound SMS message to messages table
+    await query(
+      `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, meta)
+       VALUES ($1, $2, 'in', 'sms', 'received', $3, $4)`,
+      [lift.id, toDigits, incoming, JSON.stringify({ sms_id: smsId })]
+    );
+    console.log('[sms/inbound] ✅ Logged inbound SMS to messages table');
+
     // Create ticket for this emergency with timer started
     const ticketResult = await query(
       `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
@@ -589,6 +618,19 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
             } catch (msgErr) {
               console.error(`[inbound] Failed to save message to ticket_messages:`, msgErr);
             }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `Emergency alert: ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [lift.id, to, messageBody, messageId, JSON.stringify({ template: tplName, ticket_id: ticket.id })]
+              );
+              console.log(`[inbound] ✅ Logged outbound WhatsApp template to messages table`);
+            } catch (logErr) {
+              console.error(`[inbound] Failed to log message to messages table:`, logErr);
+            }
           }
           
           logEvent('wa_template_ok', { 
@@ -654,7 +696,7 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
 });
 
 // Helper function to send message to all contacts for a lift
-async function notifyAllContactsForLift(liftId, message) {
+async function notifyAllContactsForLift(liftId, message, ticketId = null) {
   try {
     const contactsResult = await query(
       `SELECT c.primary_msisdn, c.display_name 
@@ -667,12 +709,28 @@ async function notifyAllContactsForLift(liftId, message) {
     const results = [];
     for (const contact of contactsResult.rows) {
       try {
-        await sendTextViaBridge({
+        const response = await sendTextViaBridge({
           baseUrl: BRIDGE_BASE_URL,
           apiKey: BRIDGE_API_KEY,
           to: contact.primary_msisdn,
           text: message
         });
+        
+        // Log to messages table for observability
+        const waId = response?.wa_id || response?.id;
+        if (waId) {
+          try {
+            await query(
+              `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+               VALUES ($1, $2, 'out', 'whatsapp_text', 'sent', $3, $4, $5)`,
+              [liftId, contact.primary_msisdn, message, waId, JSON.stringify({ notification: true, ticket_id: ticketId })]
+            );
+            console.log(`[notify] ✅ Logged notification to messages table`);
+          } catch (logErr) {
+            console.error(`[notify] Failed to log message to messages table:`, logErr);
+          }
+        }
+        
         results.push({ name: contact.display_name, status: 'sent' });
         console.log(`[notify] Sent to ${contact.display_name} (${contact.primary_msisdn})`);
       } catch (err) {
@@ -962,6 +1020,19 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
           } catch (msgErr) {
             console.error(`[webhook/whatsapp] Failed to save follow-up message to ticket_messages:`, msgErr);
           }
+          
+          // Also log to messages table for observability
+          try {
+            const messageBody = `Has the service provider been notified of the entrapment at ${ticket.lift_name}?`;
+            await query(
+              `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+               VALUES ($1, $2, 'out', 'whatsapp_interactive', 'sent', $3, $4, $5)`,
+              [ticket.lift_id, fromNumber, messageBody, followupMessageId, JSON.stringify({ session: true, ticket_id: ticket.id })]
+            );
+            console.log(`[webhook/whatsapp] ✅ Logged entrapment follow-up to messages table`);
+          } catch (logErr) {
+            console.error(`[webhook/whatsapp] Failed to log message to messages table:`, logErr);
+          }
         }
         
         // Update ticket to track that entrapment was clicked and start reminder timer
@@ -1039,7 +1110,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       // Send confirmation message to all contacts if required
       if (notifyAllContacts) {
         try {
-          const results = await notifyAllContactsForLift(ticket.lift_id, confirmationMessage);
+          const results = await notifyAllContactsForLift(ticket.lift_id, confirmationMessage, ticket.id);
           console.log('[webhook/whatsapp] Notified all contacts:', results);
         } catch (err) {
           console.error('[webhook/whatsapp] Failed to notify all contacts:', err);
@@ -1140,7 +1211,7 @@ async function processInitialAlertReminder(ticket) {
     const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
     const escalationMessage = `⚠️ CRITICAL ALERT: [${ticketRef}] Emergency ticket auto-closed for ${ticket.lift_name}. NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED.`;
     try {
-      await notifyAllContactsForLift(ticket.lift_id, escalationMessage);
+      await notifyAllContactsForLift(ticket.lift_id, escalationMessage, ticket.id);
       console.log(`[reminder] Initial alert ticket ${ticket.id} auto-closed, escalation sent`);
       
       logEvent('ticket_auto_closed_no_response', {
@@ -1196,6 +1267,19 @@ async function processInitialAlertReminder(ticket) {
               );
             } catch (msgErr) {
               console.error(`[reminder] Failed to save reminder message to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `REMINDER ${newCount}/3: Emergency alert pending. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [ticket.lift_id, contact.primary_msisdn, messageBody, reminderMessageId, JSON.stringify({ reminder: newCount, template: BRIDGE_TEMPLATE_NAME, ticket_id: ticket.id })]
+              );
+              console.log(`[reminder] ✅ Logged reminder to messages table`);
+            } catch (logErr) {
+              console.error(`[reminder] Failed to log message to messages table:`, logErr);
             }
           }
           
@@ -1297,7 +1381,7 @@ async function checkPendingReminders() {
         
         const finalMessage = `⚠️ ALERT: Ticket auto-closed for ${ticket.lift_name}. Service provider notification was NOT confirmed after 3 reminders. Please follow up immediately.`;
         try {
-          await notifyAllContactsForLift(ticket.lift_id, finalMessage);
+          await notifyAllContactsForLift(ticket.lift_id, finalMessage, ticket.id);
           console.log(`[reminder] Ticket ${ticket.id} auto-closed, all contacts notified`);
           
           logEvent('ticket_auto_closed', {
@@ -1333,6 +1417,18 @@ async function checkPendingReminders() {
               );
             } catch (msgErr) {
               console.error(`[reminder] Failed to save entrapment reminder to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_interactive', 'sent', $3, $4, $5)`,
+                [ticket.lift_id, ticket.primary_msisdn, reminderMessage, entrapmentReminderMsgId, JSON.stringify({ session: true, reminder: newCount, ticket_id: ticket.id })]
+              );
+              console.log(`[reminder] ✅ Logged entrapment reminder to messages table`);
+            } catch (logErr) {
+              console.error(`[reminder] Failed to log message to messages table:`, logErr);
             }
           }
           
