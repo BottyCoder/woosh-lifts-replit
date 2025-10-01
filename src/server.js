@@ -195,8 +195,7 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${BRIDGE_API_KEY}`,
-      "X-Api-Key": `${BRIDGE_API_KEY}`
+      "x-tenant-key": `${BRIDGE_API_KEY}`
     },
     body: JSON.stringify(payload),
     timeout: 10_000
@@ -841,11 +840,11 @@ app.post("/admin/ping-bridge", express.json(), async (req, res) => {
       return res.status(400).json({ error: "missing to or text parameter" });
     }
     
-    const response = await fetch(`${BRIDGE_BASE_URL}/api/messages/send`, {
+    const response = await fetch(`${BRIDGE_BASE_URL}/v1/send`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json", 
-        "X-Api-Key": BRIDGE_API_KEY 
+        "x-tenant-key": BRIDGE_API_KEY 
       },
       body: JSON.stringify({ to, text })
     });

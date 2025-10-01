@@ -1,0 +1,45 @@
+TEMPLATE SENDING SUCCESSFULLY TESTED FOR GROWTHPOINT
+WHAT I DID:
+I sent a test of the growthpoint_lift_emergency template through the Woosh Bridge and it worked perfectly. The template was delivered successfully to my phone number.
+ENDPOINT USED:
+POST https://wa.woosh.ai/v1/send
+HEADERS REQUIRED:
+Content-Type: application/json
+x-tenant-key: c991fd90-d50d-4b44-9228-b4dd78e47162
+REQUEST BODY THAT WORKED:
+{
+"to": "27824537125",
+"type": "template",
+"template": {
+"name": "growthpoint_lift_emergency",
+"language": {"code": "en"}
+}
+}
+THE CRITICAL DETAIL:
+The language code MUST be "en" (just the two letters), NOT "en_US" or "en_ZA".
+The template is registered in Meta's system with language code "en" and WhatsApp requires an EXACT match. If they send "en_US" or omit the language entirely (which causes the bridge to default to "en_US"), they will get error 132001 saying the template doesn't exist.
+HOW GROWTHPOINT SHOULD USE IT:
+Send a POST request to: https://wa.woosh.ai/v1/send
+Include these headers:
+Content-Type: application/json
+x-tenant-key: c991fd90-d50d-4b44-9228-b4dd78e47162
+Include this JSON body (replace the "to" number with their recipient):
+to: the recipient's phone number in format "27821234567"
+type: "template"
+template: object containing:
+name: "growthpoint_lift_emergency"
+language: object containing:
+code: "en" (this MUST be exactly "en", not "en_US")
+BOTH APPROVED TEMPLATES AVAILABLE:
+growthpoint_lift_emergency - Language: "en" - Status: APPROVED
+growthpoint_entrapment_confirmed - Language: "en" - Status: APPROVED
+Both use language code "en" and both are ready to send.
+THE BRIDGE DOES NOT REQUIRE PRE-REGISTRATION:
+Templates do not need to be configured or stored in Woosh Bridge. GrowthPoint can send ANY approved template from their WABA - the bridge passes it straight through to Meta's API without any validation or filtering on our side.
+ERROR THEY'RE GETTING:
+Error 132001 "template name does not exist in en" means Meta cannot find the template with that exact name and language combination. This happens when:
+The language code doesn't match exactly (they send "en_US" but template is "en")
+The template name has a typo
+They're missing the language object entirely (causing default to "en_US")
+CONFIRMED WORKING:
+I just tested and successfully sent the growthpoint_lift_emergency template through the bridge using language code "en" and it delivered perfectly. The bridge is working correctly - they just need to ensure they're sending language code "en" exactly.

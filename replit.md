@@ -74,9 +74,11 @@ Preferred communication style: Simple, everyday language.
 
 **WhatsApp Messaging - Woosh Bridge**:
 - Base URL: `https://wa.woosh.ai` (configurable via `BRIDGE_BASE_URL`)
-- Authentication: API key via `X-Api-Key` header
+- API Endpoint: `/v1/send`
+- Authentication: Tenant key via `x-tenant-key` header (BRIDGE_API_KEY env var)
 - WhatsApp Business Number: +27 69 023 2755 (Growthpoint)
 - Template-based messaging using `growthpoint_lift_emergency` template (configurable)
+- Template language: `en` (must match exact language code in WhatsApp Manager)
 - Follow-up template: `growthpoint_entrapment_confirmed`
 - Webhook callbacks for interactive button responses
 - Button click payload structure: `entry[0].changes[0].value.messages[0].interactive.button_reply.id`
