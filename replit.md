@@ -18,6 +18,13 @@ Preferred communication style: Simple, everyday language.
 - **Fixed reminder count bug**: System was showing 4/3 reminders due to off-by-one error in auto-close logic. Now correctly caps at 3/3 when auto-closing tickets after 3 unanswered reminders (applies to both initial alerts and entrapment confirmation flows)
 - **Added Linked Contacts visibility**: Lifts table now shows "Linked Contacts" column displaying all contacts linked to each lift (comma-separated names)
 - **Fixed Recent Tickets display**: Dashboard now shows 5 most recent tickets regardless of status (sorted by creation date), not just open tickets
+- **Implemented full message tracking and observability**: Every SMS and WhatsApp message now logged to messages table for complete audit trail:
+  - Inbound SMS: Logged with direction='in', type='sms', status='received'
+  - Outbound templates: Initial alerts and reminders logged with wa_id for status tracking
+  - Outbound interactive: Entrapment follow-ups and reminders logged with wa_id
+  - Outbound text: Confirmation and escalation messages logged via notifyAllContactsForLift
+  - All messages include ticket_id in meta for ticket correlation
+  - Messages table has wa_id column (indexed) for delivery/read receipt tracking via status webhook
 
 ## System Architecture
 
