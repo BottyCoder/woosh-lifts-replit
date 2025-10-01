@@ -37,12 +37,28 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Navigation
-function navigateTo(pageName) {
+function navigateTo(pageName, evt) {
     // Update active nav item
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.target.closest('.nav-item').classList.add('active');
+    
+    // If called from a nav item, mark it active
+    if (evt && evt.target) {
+        const navItem = evt.target.closest('.nav-item');
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+    } else {
+        // If no event, find and activate by page name
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            const onclick = item.getAttribute('onclick');
+            if (onclick && onclick.includes(`'${pageName}'`)) {
+                item.classList.add('active');
+            }
+        });
+    }
 
     // Update page title
     const titles = {
@@ -58,7 +74,10 @@ function navigateTo(pageName) {
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
     });
-    document.getElementById(`page-${pageName}`).classList.add('active');
+    const targetPage = document.getElementById(`page-${pageName}`);
+    if (targetPage) {
+        targetPage.classList.add('active');
+    }
 
     // Load page data
     currentPage = pageName;
@@ -102,7 +121,7 @@ async function authFetch(url, options = {}) {
 // System Status Check
 async function checkSystemStatus() {
     try {
-        const response = await fetch(`${BASE_URL}/admin/status`);
+        const response = await authFetch(`${BASE_URL}/admin/status`);
         const data = await response.json();
         
         const statusEl = document.getElementById('system-status');
@@ -123,31 +142,52 @@ async function checkSystemStatus() {
 // Dashboard
 async function loadDashboard() {
     try {
-        // Load stats and recent tickets
-        const [liftsRes, contactsRes, ticketsRes] = await Promise.all([
+        // Load all data including messages for today count
+        const [liftsRes, contactsRes, allTicketsRes, messagesRes] = await Promise.all([
             authFetch(`${BASE_URL}/admin/lifts`),
             authFetch(`${BASE_URL}/admin/contacts`),
-            authFetch(`${BASE_URL}/admin/tickets?status=open&limit=5`)
+            authFetch(`${BASE_URL}/admin/tickets?limit=1000`),
+            authFetch(`${BASE_URL}/admin/messages?limit=1000`)
         ]);
 
         const lifts = await liftsRes.json();
         const contacts = await contactsRes.json();
-        const tickets = await ticketsRes.json();
+        const allTickets = await allTicketsRes.json();
+        const messagesResponse = await messagesRes.json();
+        
+        // Extract messages array from response (endpoint returns { data: { messages: [...] } })
+        const messagesArray = messagesResponse.data?.messages || [];
+
+        // Count active tickets (open or entrapment_awaiting_confirmation)
+        const activeTicketsCount = (allTickets.data || []).filter(t => 
+            ['open', 'entrapment_awaiting_confirmation'].includes(t.status)
+        ).length;
+
+        // Count messages from today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const messagesToday = messagesArray.filter(m => {
+            const msgDate = new Date(m.ts || m.created_at);
+            return msgDate >= today;
+        }).length;
 
         // Update stats
         document.getElementById('stat-total-lifts').textContent = lifts.data?.length || 0;
         document.getElementById('stat-total-contacts').textContent = contacts.data?.length || 0;
-        document.getElementById('stat-active-tickets').textContent = 
-            tickets.data?.filter(t => ['open', 'entrapment_awaiting_confirmation'].includes(t.status))?.length || 0;
-        document.getElementById('stat-messages-today').textContent = '-'; // TODO: Add messages count
+        document.getElementById('stat-active-tickets').textContent = activeTicketsCount;
+        document.getElementById('stat-messages-today').textContent = messagesToday;
 
-        // Render recent tickets
-        renderRecentTickets(tickets.data || []);
+        // Get recent open tickets for display (limit 5)
+        const recentTickets = (allTickets.data || []).filter(t => 
+            ['open', 'entrapment_awaiting_confirmation'].includes(t.status)
+        ).slice(0, 5);
+        
+        renderRecentTickets(recentTickets);
         
     } catch (error) {
         console.error('Error loading dashboard:', error);
         document.getElementById('recent-tickets-list').innerHTML = 
-            '<div class="empty-state"><h3>Error loading dashboard</h3><p>' + error.message + '</p></div>';
+            '<div class="empty-state"><h3>Error loading dashboard</h3><p>' + (error.message || 'Unknown error') + '</p></div>';
     }
 }
 

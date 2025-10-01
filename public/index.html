@@ -441,23 +441,23 @@
             </div>
             
             <div class="sidebar-nav">
-                <div class="nav-item active" onclick="navigateTo('dashboard')">
+                <div class="nav-item active" onclick="navigateTo('dashboard', event)">
                     <span class="nav-icon">▦</span>
                     <span>Dashboard</span>
                 </div>
-                <div class="nav-item" onclick="navigateTo('tickets')">
+                <div class="nav-item" onclick="navigateTo('tickets', event)">
                     <span class="nav-icon">◈</span>
                     <span>Tickets</span>
                 </div>
-                <div class="nav-item" onclick="navigateTo('messages')">
+                <div class="nav-item" onclick="navigateTo('messages', event)">
                     <span class="nav-icon">✉</span>
                     <span>Messages</span>
                 </div>
-                <div class="nav-item" onclick="navigateTo('lifts')">
+                <div class="nav-item" onclick="navigateTo('lifts', event)">
                     <span class="nav-icon">▣</span>
                     <span>Lifts</span>
                 </div>
-                <div class="nav-item" onclick="navigateTo('contacts')">
+                <div class="nav-item" onclick="navigateTo('contacts', event)">
                     <span class="nav-icon">◉</span>
                     <span>Contacts</span>
                 </div>
@@ -505,7 +505,7 @@
                     <div class="card">
                         <div class="card-header">
                             <h3>Recent Tickets</h3>
-                            <button class="btn btn-secondary" onclick="navigateTo('tickets')">View All</button>
+                            <button class="btn btn-secondary" onclick="navigateTo('tickets', event)">View All</button>
                         </div>
                         <div id="recent-tickets-list">
                             <div class="loading">
