@@ -375,4 +375,60 @@ router.post('/db/bulk-import', express.json(), async (req, res) => {
   }
 });
 
+// Get event logs with filtering
+router.get('/logs', async (req, res) => {
+  try {
+    const { 
+      ticket_id, 
+      lift_id, 
+      event_type, 
+      limit = 100, 
+      offset = 0,
+      since  // ISO timestamp
+    } = req.query;
+    
+    let sql = `SELECT * FROM event_log WHERE 1=1`;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (ticket_id) {
+      sql += ` AND ticket_id = $${paramIndex++}`;
+      params.push(parseInt(ticket_id));
+    }
+    
+    if (lift_id) {
+      sql += ` AND lift_id = $${paramIndex++}`;
+      params.push(parseInt(lift_id));
+    }
+    
+    if (event_type) {
+      sql += ` AND event_type ILIKE $${paramIndex++}`;
+      params.push(`%${event_type}%`);
+    }
+    
+    if (since) {
+      sql += ` AND created_at >= $${paramIndex++}`;
+      params.push(since);
+    }
+    
+    sql += ` ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+    params.push(parseInt(limit), parseInt(offset));
+    
+    const result = await query(sql, params);
+    
+    res.json({
+      ok: true,
+      logs: result.rows,
+      count: result.rows.length,
+      filters: { ticket_id, lift_id, event_type, since }
+    });
+  } catch (error) {
+    console.error('[admin/logs] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { message: error.message } 
+    });
+  }
+});
+
 module.exports = router;

@@ -178,8 +178,28 @@ app.get('/__debug', (req, res) => {
 });
 
 // Helper functions
-const logEvent = (event, extra = {}) =>
-  console.log(JSON.stringify({ event, ts: new Date().toISOString(), ...extra }));
+const logEvent = async (event_type, data = {}) => {
+  const logData = { event: event_type, ts: new Date().toISOString(), ...data };
+  console.log(JSON.stringify(logData));
+  
+  // Store in database for queryable logs
+  try {
+    await query(
+      `INSERT INTO event_log (event_type, ticket_id, lift_id, contact_id, metadata, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [
+        event_type,
+        data.ticket_id || null,
+        data.lift_id || null,
+        data.contact_id || null,
+        JSON.stringify(data)
+      ]
+    );
+  } catch (err) {
+    // Don't fail the request if logging fails
+    console.error('[logEvent] Failed to store event:', err.message);
+  }
+};
 
 const plus = d => (d ? `+${d}` : '');
 const digits = v => (v ?? '').toString().replace(/\D+/g, '');
@@ -623,6 +643,13 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
     
+    // Log webhook received to database
+    await query(
+      `INSERT INTO event_log (event_type, metadata, request_payload, created_at)
+       VALUES ($1, $2, $3, NOW())`,
+      ['webhook_whatsapp_received', JSON.stringify({ source: 'woosh_bridge' }), JSON.stringify(req.body)]
+    );
+    
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0];
     const value = change?.value;
@@ -652,13 +679,29 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         text: buttonText
       });
     } else {
+      const reason = !message ? 'no_message' : 'not_button';
       console.log('[webhook/whatsapp] Not a button click, ignoring:', {
         hasMessage: !!message,
         messageType: message?.type,
-        reason: !message ? 'no_message' : 'not_button'
+        reason
       });
+      
+      // Log non-button webhooks too for debugging
+      await query(
+        `INSERT INTO event_log (event_type, metadata, created_at)
+         VALUES ($1, $2, NOW())`,
+        ['webhook_not_button_click', JSON.stringify({ reason, messageType: message?.type, hasStatuses: !!value?.statuses })]
+      );
+      
       return res.status(200).json({ status: 'ok', processed: false });
     }
+    
+    // Log button click
+    await query(
+      `INSERT INTO event_log (event_type, metadata, created_at)
+       VALUES ($1, $2, NOW())`,
+      ['button_click_received', JSON.stringify({ from: fromNumber, payload: buttonPayload, text: buttonText })]
+    );
     
     // Find contact by WhatsApp number
     const contactResult = await query(
@@ -668,6 +711,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     if (contactResult.rows.length === 0) {
       console.log('[webhook/whatsapp] Contact not found:', fromNumber);
+      await logEvent('button_click_contact_not_found', { from: fromNumber, payload: buttonPayload });
       return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
     }
     
