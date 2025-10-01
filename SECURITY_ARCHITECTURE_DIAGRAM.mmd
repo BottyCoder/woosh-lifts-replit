@@ -1,0 +1,33 @@
+graph TB
+    subgraph External
+        SMS[SMS Portal<br/>HMAC Auth]
+        WA[Woosh Ai WhatsApp<br/>API Key Auth]
+        Client[Admin Client<br/>Bearer Token]
+    end
+    
+    subgraph "Application Layer"
+        Auth[Authentication<br/>Middleware]
+        Routes[API Routes]
+        BL[Business Logic]
+    end
+    
+    subgraph "Data Layer"
+        DB[(PostgreSQL<br/>TLS Encrypted)]
+    end
+    
+    SMS -->|HTTPS + HMAC| Auth
+    WA -->|HTTPS + Token| Auth
+    Client -->|HTTPS + Bearer| Auth
+    
+    Auth -->|Validated| Routes
+    Auth -->|Rejected| Err[Error Response]
+    
+    Routes --> BL
+    BL -->|Parameterized Queries| DB
+    
+    BL -->|HTTPS| SMS
+    BL -->|HTTPS + API Key| WA
+    
+    style Auth fill:#ff6b6b
+    style DB fill:#4ecdc4
+    style Err fill:#ff0000
