@@ -699,6 +699,10 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       buttonType = 'entrapment_yes';
       notifyAllContacts = true;
       confirmationMessage = `We have received a "Yes" response. The service provider has been notified and this ticket has been closed.`;
+    } else if (buttonIdentifier.includes('no')) {
+      // NO button - this is from the old template, just acknowledge it
+      console.log('[webhook/whatsapp] NO button clicked - old template, ignoring');
+      return res.status(200).json({ status: 'ok', processed: false, reason: 'no_button_deprecated' });
     } else if (buttonIdentifier.includes('test')) {
       shouldClose = true;
       buttonType = 'test';

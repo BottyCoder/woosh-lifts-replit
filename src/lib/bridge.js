@@ -106,6 +106,9 @@ async function sendInteractiveViaBridge({ baseUrl, apiKey, to, bodyText, buttons
     }))}
   };
 
+  const payload = { to, type: "interactive", interactive };
+  console.log('[bridge] Sending interactive message:', JSON.stringify(payload, null, 2));
+
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort("timeout"), DEFAULT_TIMEOUT_MS);
 
@@ -114,7 +117,7 @@ async function sendInteractiveViaBridge({ baseUrl, apiKey, to, bodyText, buttons
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-tenant-key": apiKey },
-      body: JSON.stringify({ to, type: "interactive", interactive }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
   } catch (e) {
