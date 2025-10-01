@@ -12,10 +12,12 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f8fafc;
             color: #334155;
             line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         .app-container {
@@ -26,59 +28,66 @@
         /* Sidebar */
         .sidebar {
             width: 260px;
-            background: #1e293b;
-            color: white;
+            background: #0f172a;
+            color: #94a3b8;
             display: flex;
             flex-direction: column;
-            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+            box-shadow: 2px 0 20px rgba(0,0,0,0.3);
         }
 
         .sidebar-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #334155;
+            padding: 2rem 1.5rem 1.5rem;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
         }
 
         .sidebar-header h1 {
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: 1.125rem;
+            font-weight: 700;
             margin-bottom: 0.25rem;
+            color: #f1f5f9;
+            letter-spacing: -0.025em;
         }
 
         .sidebar-header p {
-            font-size: 0.875rem;
-            color: #94a3b8;
+            font-size: 0.8125rem;
+            color: #64748b;
+            font-weight: 500;
         }
 
         .sidebar-nav {
             flex: 1;
-            padding: 1rem;
+            padding: 1rem 0.75rem;
             overflow-y: auto;
         }
 
         .nav-item {
             display: flex;
             align-items: center;
-            padding: 0.75rem 1rem;
-            margin-bottom: 0.25rem;
-            border-radius: 0.375rem;
+            padding: 0.625rem 1rem;
+            margin-bottom: 0.125rem;
+            border-radius: 0.5rem;
             cursor: pointer;
-            transition: all 0.2s;
-            color: #cbd5e1;
+            transition: all 0.15s;
+            color: #94a3b8;
+            font-size: 0.9375rem;
+            font-weight: 500;
         }
 
         .nav-item:hover {
-            background: #334155;
-            color: white;
+            background: rgba(148, 163, 184, 0.1);
+            color: #e2e8f0;
         }
 
         .nav-item.active {
-            background: #3b82f6;
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
             color: white;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
         }
 
         .nav-icon {
-            margin-right: 0.75rem;
-            font-size: 1.25rem;
+            margin-right: 0.875rem;
+            font-size: 1.125rem;
+            opacity: 0.9;
         }
 
         /* Main content area */
@@ -91,19 +100,20 @@
 
         /* Top bar */
         .top-bar {
-            background: white;
+            background: #ffffff;
             border-bottom: 1px solid #e2e8f0;
-            padding: 1rem 2rem;
+            padding: 1.25rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
         }
 
         .top-bar h2 {
             font-size: 1.5rem;
-            color: #1e293b;
-            font-weight: 600;
+            color: #0f172a;
+            font-weight: 700;
+            letter-spacing: -0.025em;
         }
 
         .status-badge {
@@ -157,23 +167,27 @@
         /* Cards */
         .card {
             background: white;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
+            border-radius: 0.75rem;
+            padding: 1.75rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #f1f5f9;
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.75rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #f1f5f9;
         }
 
         .card-header h3 {
             font-size: 1.125rem;
-            font-weight: 600;
-            color: #1e293b;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.025em;
         }
 
         /* Stats Grid */
@@ -186,66 +200,84 @@
 
         .stat-card {
             background: white;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 0.75rem;
+            padding: 1.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #f1f5f9;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
         }
 
         .stat-label {
-            font-size: 0.875rem;
+            font-size: 0.8125rem;
             color: #64748b;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
         .stat-value {
-            font-size: 2rem;
+            font-size: 2.25rem;
             font-weight: 700;
-            color: #1e293b;
+            color: #0f172a;
+            letter-spacing: -0.025em;
         }
 
         .stat-change {
-            font-size: 0.875rem;
-            margin-top: 0.5rem;
+            font-size: 0.8125rem;
+            margin-top: 0.75rem;
+            color: #64748b;
+            font-weight: 500;
         }
 
         .stat-change.positive {
-            color: #16a34a;
+            color: #10b981;
         }
 
         .stat-change.negative {
-            color: #dc2626;
+            color: #ef4444;
         }
 
         /* Buttons */
         .btn {
-            padding: 0.625rem 1.25rem;
+            padding: 0.625rem 1.5rem;
             border: none;
-            border-radius: 0.375rem;
-            font-size: 0.9375rem;
-            font-weight: 500;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            letter-spacing: 0.01em;
         }
 
         .btn-primary {
-            background: #3b82f6;
+            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
             color: white;
+            box-shadow: 0 2px 8px rgba(14, 165, 233, 0.25);
         }
 
         .btn-primary:hover {
-            background: #2563eb;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.35);
+            transform: translateY(-1px);
         }
 
         .btn-secondary {
-            background: #e2e8f0;
+            background: #f1f5f9;
             color: #475569;
+            border: 1px solid #e2e8f0;
         }
 
         .btn-secondary:hover {
-            background: #cbd5e1;
+            background: #e2e8f0;
+            border-color: #cbd5e1;
         }
 
         /* Tables */
@@ -256,59 +288,72 @@
 
         .table thead {
             background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
         }
 
         .table th {
             text-align: left;
-            padding: 0.75rem 1rem;
-            font-weight: 600;
-            color: #475569;
-            font-size: 0.875rem;
+            padding: 0.875rem 1rem;
+            font-weight: 700;
+            color: #64748b;
+            font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 0.025em;
+            letter-spacing: 0.05em;
         }
 
         .table td {
             padding: 1rem;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid #f1f5f9;
+            color: #334155;
+            font-size: 0.9375rem;
+        }
+
+        .table tbody tr {
+            transition: all 0.1s;
         }
 
         .table tbody tr:hover {
-            background: #f8fafc;
+            background: #fafbfc;
         }
 
         /* Status badges */
         .badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
+            padding: 0.375rem 0.875rem;
+            border-radius: 0.375rem;
             font-size: 0.75rem;
             font-weight: 600;
             display: inline-block;
+            letter-spacing: 0.025em;
         }
 
         .badge-success {
-            background: #dcfce7;
-            color: #166534;
+            background: #ecfdf5;
+            color: #047857;
+            border: 1px solid #a7f3d0;
         }
 
         .badge-warning {
-            background: #fef3c7;
-            color: #92400e;
+            background: #fefce8;
+            color: #b45309;
+            border: 1px solid #fde68a;
         }
 
         .badge-danger {
-            background: #fee2e2;
-            color: #991b1b;
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
         }
 
         .badge-info {
-            background: #dbeafe;
+            background: #eff6ff;
             color: #1e40af;
+            border: 1px solid #bfdbfe;
         }
 
         .badge-gray {
-            background: #f1f5f9;
-            color: #475569;
+            background: #f8fafc;
+            color: #64748b;
+            border: 1px solid #e2e8f0;
         }
 
         /* Message status indicators */
@@ -397,23 +442,23 @@
             
             <div class="sidebar-nav">
                 <div class="nav-item active" onclick="navigateTo('dashboard')">
-                    <span class="nav-icon">📊</span>
+                    <span class="nav-icon">▦</span>
                     <span>Dashboard</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('tickets')">
-                    <span class="nav-icon">🎫</span>
+                    <span class="nav-icon">◈</span>
                     <span>Tickets</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('messages')">
-                    <span class="nav-icon">💬</span>
+                    <span class="nav-icon">✉</span>
                     <span>Messages</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('lifts')">
-                    <span class="nav-icon">🛗</span>
+                    <span class="nav-icon">▣</span>
                     <span>Lifts</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('contacts')">
-                    <span class="nav-icon">👥</span>
+                    <span class="nav-icon">◉</span>
                     <span>Contacts</span>
                 </div>
             </div>
