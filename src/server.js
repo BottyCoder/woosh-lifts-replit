@@ -204,6 +204,21 @@ const logEvent = async (event_type, data = {}) => {
 const plus = d => (d ? `+${d}` : '');
 const digits = v => (v ?? '').toString().replace(/\D+/g, '');
 
+// Generate human-readable ticket reference
+function generateTicketReference(lift, ticketId) {
+  // Clean building name: remove special chars, take first 3 words max
+  const buildingClean = (lift.building || 'LIFT')
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, '')
+    .split(/\s+/)
+    .slice(0, 3)
+    .join('-')
+    .substring(0, 20);
+  
+  // Format: BUILDING-TKT123
+  return `${buildingClean}-TKT${ticketId}`;
+}
+
 function normalize(body = {}) {
   const id = body.id ?? body.Id ?? body.messageId ?? body.reqId ?? `gen-${Date.now()}`;
   const phoneRaw = body.phone ?? body.phoneNumber ?? body.msisdn ?? body.to ?? body.from ?? '';
@@ -296,7 +311,16 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
       [lift.id, smsId, incoming]
     );
     const ticket = ticketResult.rows[0];
-    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id });
+    
+    // Generate and update ticket reference
+    const ticketRef = generateTicketReference(lift, ticket.id);
+    await query(
+      `UPDATE tickets SET ticket_reference = $1 WHERE id = $2`,
+      [ticketRef, ticket.id]
+    );
+    ticket.ticket_reference = ticketRef;
+    
+    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id, ticket_ref: ticketRef });
 
     // Get all linked contacts
     const contactsResult = await query(
@@ -332,11 +356,12 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
       if (tplName) {
         console.log(`[sms/direct] Sending template to ${displayName} (${to}):`, { name: tplName, lang: tplLang });
         try {
+          const locationText = `[${ticketRef}] ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`;
           const r = await sendTemplateRaw({
             to,
             name: tplName,
             langCode: tplLang,
-            paramText: `${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`
+            paramText: locationText
           });
           console.log(`[sms/direct] Template sent successfully to ${displayName}:`, r);
           logEvent('wa_template_ok', { 
@@ -455,7 +480,16 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
       [lift.id, smsId, incoming]
     );
     const ticket = ticketResult.rows[0];
-    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id });
+    
+    // Generate and update ticket reference
+    const ticketRef = generateTicketReference(lift, ticket.id);
+    await query(
+      `UPDATE tickets SET ticket_reference = $1 WHERE id = $2`,
+      [ticketRef, ticket.id]
+    );
+    ticket.ticket_reference = ticketRef;
+    
+    logEvent('ticket_created', { ticket_id: ticket.id, sms_id: smsId, lift_id: lift.id, ticket_ref: ticketRef });
 
     // Get all linked contacts
     const contactsResult = await query(
@@ -491,11 +525,12 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
       if (tplName) {
         console.log(`[inbound] Sending template to ${displayName} (${to}):`, { name: tplName, lang: tplLang });
         try {
+          const locationText = `[${ticketRef}] ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`;
           const r = await sendTemplateRaw({
             to,
             name: tplName,
             langCode: tplLang,
-            paramText: `${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`
+            paramText: locationText
           });
           console.log(`[inbound] Template sent successfully to ${displayName}:`, r);
           logEvent('wa_template_ok', { 
@@ -783,14 +818,6 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         const { sendInteractiveViaBridge } = require('./lib/bridge');
         
         // Send interactive message asking if service provider was notified (session is open, no template needed)
-        console.log(`[webhook/whatsapp] Sending interactive YES button to ${fromNumber} for ticket ${ticket.id}`);
-        const bridgeResponse = await sendInteractiveViaBridge({
-          baseUrl: BRIDGE_BASE_URL,
-          apiKey: BRIDGE_API_KEY,
-          to: fromNumber,
-          bodyText: `Has the service provider been notified of the entrapment at ${ticket.lift_name}?`,
-          buttons: [{ id: "entrapment_yes", title: "YES" }]
-        });
         
         console.log('[webhook/whatsapp] Follow-up interactive message sent successfully');
         console.log('[webhook/whatsapp] Bridge API response:', JSON.stringify(bridgeResponse, null, 2));
