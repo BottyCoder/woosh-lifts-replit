@@ -920,14 +920,16 @@ async function checkPendingReminders() {
           console.error(`[reminder] Failed to notify contacts for ticket ${ticket.id}:`, err);
         }
       } else {
-        // Send reminder and increment count
-        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Press the YES button when notified.`;
+        // Send reminder with interactive YES button
+        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}.`;
         try {
-          await sendTextViaBridge({
+          const { sendInteractiveViaBridge } = require('./lib/bridge');
+          await sendInteractiveViaBridge({
             baseUrl: BRIDGE_BASE_URL,
             apiKey: BRIDGE_API_KEY,
             to: ticket.primary_msisdn,
-            text: reminderMessage
+            bodyText: reminderMessage,
+            buttons: [{ id: "entrapment_yes", title: "YES" }]
           });
           
           await query(
