@@ -65,6 +65,23 @@ Preferred communication style: Simple, everyday language.
    - Message type and status fields
    - JSONB meta field for flexible metadata storage
 
+5. **tickets** - Emergency ticket tracking
+   - Primary key: `id` (serial)
+   - Foreign key to lifts
+   - Fields: sms_id, status, button_clicked, responded_by, reminder_count
+   - Timestamps: created_at, updated_at, resolved_at, last_reminder_at
+   - `ticket_reference` (VARCHAR 100): Human-readable ref like "BUILDING-TKT123"
+   - `message_id` (VARCHAR 255): Backward compatibility, stores first wa_id
+
+6. **ticket_messages** - WhatsApp message tracking for precise button click matching
+   - Primary key: `id` (serial)
+   - Foreign key to tickets
+   - Foreign key to contacts
+   - `message_id` (VARCHAR 255, UNIQUE): The wa_id from Woosh Bridge response
+   - `message_kind` (VARCHAR 50): Type of message (initial, reminder, entrapment_followup, entrapment_reminder)
+   - Created timestamp
+   - **Purpose**: Enables precise matching of button clicks to correct ticket even with multiple simultaneous emergencies
+
 **Query Patterns**:
 - Cursor-based pagination for message history (base64 encoded cursors with last_id and last_ts)
 - Auto-resolution of lifts by MSISDN (creates if not found)
@@ -115,17 +132,22 @@ ADMIN_TOKEN - Admin API authentication token
 5. Log and acknowledge
 
 **Inbound WhatsApp** (Interactive Buttons):
-1. Woosh Bridge webhook → `/webhooks/whatsapp`
+1. Woosh Bridge webhook → `/webhooks/whatsapp` (authenticated via WEBHOOK_AUTH_TOKEN)
 2. Parse button click from nested JSON structure
-3. Extract button ID and user identifier
-4. Process business logic based on button action
+3. Extract `context.id` (original message ID) from webhook payload
+4. Look up ticket via `ticket_messages` table WHERE `message_id = context.id`
+5. Fallback: If not found, search recent open tickets for contact (within 6 hours)
+6. Process business logic based on button action (Test/Maintenance/Entrapment/YES)
+7. **Supports multiple simultaneous emergencies** via precise context.id matching
 
 **Outbound Messaging**:
 1. Admin/system triggers send request
 2. Route to appropriate service (SMS Portal or Woosh Bridge)
-3. Template-based formatting for WhatsApp
-4. Plain text for SMS
-5. Error handling with retry logic (30-second timeout)
+3. Template-based formatting for WhatsApp (includes ticket reference like [BUILDING-TKT123])
+4. Capture `wa_id` from Woosh Bridge response
+5. Store `wa_id` in `ticket_messages` table with ticket_id, contact_id, and message_kind
+6. **Every message tracked** for precise button click matching (initial alerts, reminders, follow-ups)
+7. Error handling with retry logic (30-second timeout)
 
 **Initial Alert Reminder System**:
 1. SMS received → Ticket created → WhatsApp template sent with 3 buttons (Test/Maintenance/Entrapment)
