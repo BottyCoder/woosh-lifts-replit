@@ -280,7 +280,10 @@ router.post('/db/init-tickets', async (req, res) => {
         resolved_at TIMESTAMP WITH TIME ZONE,
         notes TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+        reminder_count INTEGER DEFAULT 0,
+        last_reminder_at TIMESTAMP WITH TIME ZONE,
+        closure_note TEXT
       )
     `);
     
@@ -294,6 +297,77 @@ router.post('/db/init-tickets', async (req, res) => {
     });
   } catch (error) {
     console.error('[admin/db/init-tickets] error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: { message: error.message } 
+    });
+  }
+});
+
+// Bulk import data (for syncing dev to production)
+router.post('/db/bulk-import', express.json(), async (req, res) => {
+  try {
+    const { lifts, contacts, lift_contacts, tickets } = req.body;
+    
+    // Clear existing data (careful!)
+    await query('DELETE FROM tickets');
+    await query('DELETE FROM lift_contacts');
+    await query('DELETE FROM contacts');
+    await query('DELETE FROM lifts');
+    await query('ALTER SEQUENCE lifts_id_seq RESTART WITH 1');
+    await query('ALTER SEQUENCE tickets_id_seq RESTART WITH 1');
+    
+    // Insert lifts
+    for (const lift of lifts) {
+      await query(
+        `INSERT INTO lifts (id, msisdn, site_name, building, notes) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [lift.id, lift.msisdn, lift.site_name, lift.building, lift.notes]
+      );
+    }
+    
+    // Insert contacts (preserve UUIDs)
+    for (const contact of contacts) {
+      await query(
+        `INSERT INTO contacts (id, primary_msisdn, display_name, role) 
+         VALUES ($1, $2, $3, $4)`,
+        [contact.id, contact.primary_msisdn, contact.display_name, contact.role]
+      );
+    }
+    
+    // Link contacts to lifts
+    for (const link of lift_contacts) {
+      await query(
+        `INSERT INTO lift_contacts (lift_id, contact_id, relation) 
+         VALUES ($1, $2, $3)`,
+        [link.lift_id, link.contact_id, link.relation]
+      );
+    }
+    
+    // Insert tickets
+    for (const ticket of tickets) {
+      await query(
+        `INSERT INTO tickets (id, lift_id, sms_id, status, button_clicked, 
+                             responded_by, resolved_at, notes, created_at, updated_at,
+                             reminder_count, last_reminder_at, closure_note) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [ticket.id, ticket.lift_id, ticket.sms_id, ticket.status, ticket.button_clicked,
+         ticket.responded_by, ticket.resolved_at, ticket.notes, ticket.created_at, 
+         ticket.updated_at, ticket.reminder_count, ticket.last_reminder_at, ticket.closure_note]
+      );
+    }
+    
+    return res.json({
+      ok: true,
+      imported: {
+        lifts: lifts.length,
+        contacts: contacts.length,
+        lift_contacts: lift_contacts.length,
+        tickets: tickets.length
+      }
+    });
+  } catch (error) {
+    console.error('[admin/db/bulk-import] error:', error);
     return res.status(500).json({ 
       ok: false, 
       error: { message: error.message } 

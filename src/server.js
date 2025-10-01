@@ -884,7 +884,7 @@ async function checkPendingReminders() {
     // - reminder_count < 3
     // - last_reminder_at was more than 5 minutes ago
     const result = await query(
-      `SELECT t.*, l.building || ' - ' || l.lift_identifier as lift_name,
+      `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
               c.primary_msisdn, c.display_name
        FROM tickets t
        JOIN lifts l ON t.lift_id = l.id
