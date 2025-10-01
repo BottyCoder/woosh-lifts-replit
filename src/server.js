@@ -366,10 +366,25 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
           });
           console.log(`[sms/direct] Template sent successfully to ${displayName}:`, r);
           
-          // Capture first message ID for ticket tracking (wa_id from Woosh Bridge)
+          // Capture first message ID for backward compatibility
           if (!firstMessageId && (r?.wa_id || r?.id)) {
             firstMessageId = r.wa_id || r.id;
             console.log(`[sms/direct] Captured message ID for ticket tracking: ${firstMessageId}`);
+          }
+          
+          // Save to ticket_messages for precise button click matching
+          const messageId = r?.wa_id || r?.id;
+          if (messageId) {
+            try {
+              await query(
+                `INSERT INTO ticket_messages (ticket_id, contact_id, message_id, message_kind)
+                 VALUES ($1, $2, $3, 'initial')`,
+                [ticket.id, contact.id, messageId]
+              );
+              console.log(`[sms/direct] Saved message ID ${messageId} to ticket_messages`);
+            } catch (msgErr) {
+              console.error(`[sms/direct] Failed to save message to ticket_messages:`, msgErr);
+            }
           }
           
           logEvent('wa_template_ok', { 
@@ -553,10 +568,25 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
           });
           console.log(`[inbound] Template sent successfully to ${displayName}:`, r);
           
-          // Capture first message ID for ticket tracking (wa_id from Woosh Bridge)
+          // Capture first message ID for backward compatibility
           if (!firstMessageId && (r?.wa_id || r?.id)) {
             firstMessageId = r.wa_id || r.id;
             console.log(`[inbound] Captured message ID for ticket tracking: ${firstMessageId}`);
+          }
+          
+          // Save to ticket_messages for precise button click matching
+          const messageId = r?.wa_id || r?.id;
+          if (messageId) {
+            try {
+              await query(
+                `INSERT INTO ticket_messages (ticket_id, contact_id, message_id, message_kind)
+                 VALUES ($1, $2, $3, 'initial')`,
+                [ticket.id, contact.id, messageId]
+              );
+              console.log(`[inbound] Saved message ID ${messageId} to ticket_messages`);
+            } catch (msgErr) {
+              console.error(`[inbound] Failed to save message to ticket_messages:`, msgErr);
+            }
           }
           
           logEvent('wa_template_ok', { 
@@ -701,15 +731,21 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       const providedToken = authHeader?.replace(/^Bearer\s+/i, '');
       
       if (!providedToken || providedToken !== expectedToken) {
-        console.log('[webhook/whatsapp] Authentication failed:', {
+        console.error('[webhook/whatsapp] ⚠️ SECURITY: Authentication failed - rejecting webhook');
+        await logEvent('webhook_auth_failed', { 
           headerProvided: !!authHeader,
-          tokenMatch: false
+          from: req.ip,
+          userAgent: req.get('user-agent')
         });
         return res.status(401).json({ status: 'error', error: 'Unauthorized' });
       }
-      console.log('[webhook/whatsapp] Authentication successful');
+      console.log('[webhook/whatsapp] ✅ Authentication successful');
     } else {
-      console.log('[webhook/whatsapp] WARNING: No WEBHOOK_AUTH_TOKEN configured - accepting unauthenticated request');
+      console.error('[webhook/whatsapp] ⚠️ SECURITY WARNING: No WEBHOOK_AUTH_TOKEN configured - accepting unauthenticated request. Set WEBHOOK_AUTH_TOKEN in production!');
+      await logEvent('webhook_no_auth_configured', { 
+        from: req.ip,
+        warning: 'Production security risk'
+      });
     }
     
     console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
@@ -791,45 +827,51 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     const contact = contactResult.rows[0];
     
-    // Match button click to specific ticket using context.id (supports multiple simultaneous emergencies)
+    // Match button click to specific ticket using context.id via ticket_messages table
     let ticketResult;
     if (contextId) {
-      // Precise matching: Use context.id to find the exact message/ticket
-      console.log('[webhook/whatsapp] Using context.id for precise ticket matching:', contextId);
+      // Precise matching: Look up ticket via ticket_messages using context.id
+      console.log('[webhook/whatsapp] Using context.id for precise ticket matching via ticket_messages:', contextId);
       ticketResult = await query(
         `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
-         FROM tickets t
+         FROM ticket_messages tm
+         JOIN tickets t ON tm.ticket_id = t.id
          JOIN lifts l ON t.lift_id = l.id
-         WHERE t.message_id = $1 AND t.status = 'open'`,
+         WHERE tm.message_id = $1 AND t.status = 'open'
+         LIMIT 1`,
         [contextId]
       );
       
       if (ticketResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] No ticket found with message_id:', contextId);
-        console.log('[webhook/whatsapp] Falling back to recent ticket lookup for contact:', contact.id);
-        // Fallback to old behavior if message_id not found
+        console.log('[webhook/whatsapp] No ticket found in ticket_messages for context.id:', contextId);
+        console.log('[webhook/whatsapp] Falling back to recent ticket lookup for contact within last 6 hours');
+        // Narrow fallback: recent ticket for this contact within last 6 hours
         ticketResult = await query(
           `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
            FROM tickets t
            JOIN lifts l ON t.lift_id = l.id
            JOIN lift_contacts lc ON t.lift_id = lc.lift_id
-           WHERE lc.contact_id = $1 AND t.status = 'open'
+           WHERE lc.contact_id = $1 
+             AND t.status = 'open'
+             AND t.created_at > NOW() - INTERVAL '6 hours'
            ORDER BY t.created_at DESC
            LIMIT 1`,
           [contact.id]
         );
       } else {
-        console.log('[webhook/whatsapp] ✅ Matched button click to ticket via context.id');
+        console.log('[webhook/whatsapp] ✅ Matched button click to ticket via ticket_messages');
       }
     } else {
       // Fallback: No context.id (shouldn't happen with Meta webhooks, but handle it)
-      console.log('[webhook/whatsapp] WARNING: No context.id in webhook - using fallback matching');
+      console.log('[webhook/whatsapp] WARNING: No context.id in webhook - using narrow fallback matching');
       ticketResult = await query(
         `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
          FROM tickets t
          JOIN lifts l ON t.lift_id = l.id
          JOIN lift_contacts lc ON t.lift_id = lc.lift_id
-         WHERE lc.contact_id = $1 AND t.status = 'open'
+         WHERE lc.contact_id = $1 
+           AND t.status = 'open'
+           AND t.created_at > NOW() - INTERVAL '6 hours'
          ORDER BY t.created_at DESC
          LIMIT 1`,
         [contact.id]
@@ -904,6 +946,21 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         
         console.log('[webhook/whatsapp] Follow-up interactive message sent successfully');
         console.log('[webhook/whatsapp] Bridge API response:', JSON.stringify(bridgeResponse, null, 2));
+        
+        // Save entrapment follow-up message ID to ticket_messages
+        const followupMessageId = bridgeResponse?.wa_id || bridgeResponse?.id;
+        if (followupMessageId) {
+          try {
+            await query(
+              `INSERT INTO ticket_messages (ticket_id, contact_id, message_id, message_kind)
+               VALUES ($1, $2, $3, 'entrapment_followup')`,
+              [ticket.id, contact.id, followupMessageId]
+            );
+            console.log(`[webhook/whatsapp] Saved entrapment follow-up message ID ${followupMessageId} to ticket_messages`);
+          } catch (msgErr) {
+            console.error(`[webhook/whatsapp] Failed to save follow-up message to ticket_messages:`, msgErr);
+          }
+        }
         
         // Update ticket to track that entrapment was clicked and start reminder timer
         console.log(`[webhook/whatsapp] Updating ticket ${ticket.id} to entrapment_awaiting_confirmation state`);
@@ -1112,7 +1169,7 @@ async function processInitialAlertReminder(ticket) {
         if (!contact.primary_msisdn) continue;
         
         try {
-          await sendTemplateViaBridge({
+          const reminderResponse = await sendTemplateViaBridge({
             baseUrl: BRIDGE_BASE_URL,
             apiKey: BRIDGE_API_KEY,
             to: contact.primary_msisdn,
@@ -1125,6 +1182,20 @@ async function processInitialAlertReminder(ticket) {
               }
             ]
           });
+          
+          // Save reminder message ID to ticket_messages
+          const reminderMessageId = reminderResponse?.wa_id || reminderResponse?.id;
+          if (reminderMessageId) {
+            try {
+              await query(
+                `INSERT INTO ticket_messages (ticket_id, contact_id, message_id, message_kind)
+                 VALUES ($1, $2, $3, 'reminder')`,
+                [ticket.id, contact.id, reminderMessageId]
+              );
+            } catch (msgErr) {
+              console.error(`[reminder] Failed to save reminder message to ticket_messages:`, msgErr);
+            }
+          }
           
           console.log(`[reminder] Sent initial alert reminder ${newCount}/3 to ${contact.display_name}`);
         } catch (err) {
@@ -1241,13 +1312,27 @@ async function checkPendingReminders() {
         const reminderMessage = `⚠️ REMINDER ${newCount}/3: [${ticketRef}] Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}.`;
         try {
           const { sendInteractiveViaBridge } = require('./lib/bridge');
-          await sendInteractiveViaBridge({
+          const entrapmentReminderResponse = await sendInteractiveViaBridge({
             baseUrl: BRIDGE_BASE_URL,
             apiKey: BRIDGE_API_KEY,
             to: ticket.primary_msisdn,
             bodyText: reminderMessage,
             buttons: [{ id: "entrapment_yes", title: "YES" }]
           });
+          
+          // Save entrapment reminder message ID to ticket_messages
+          const entrapmentReminderMsgId = entrapmentReminderResponse?.wa_id || entrapmentReminderResponse?.id;
+          if (entrapmentReminderMsgId) {
+            try {
+              await query(
+                `INSERT INTO ticket_messages (ticket_id, contact_id, message_id, message_kind)
+                 VALUES ($1, $2, $3, 'entrapment_reminder')`,
+                [ticket.id, ticket.responded_by, entrapmentReminderMsgId]
+              );
+            } catch (msgErr) {
+              console.error(`[reminder] Failed to save entrapment reminder to ticket_messages:`, msgErr);
+            }
+          }
           
           await query(
             `UPDATE tickets 
