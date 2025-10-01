@@ -1,7 +1,7 @@
 // src/lib/bridge.js
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode = "en_US", components }) {
+async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode = "en", components }) {
   if (!apiKey) {
     const err = new Error("missing BRIDGE_API_KEY");
     err.code = "auth";
