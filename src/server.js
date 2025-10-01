@@ -854,12 +854,14 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     // Check specific button types first (order matters!)
     let notifyAllContacts = false;
     
+    const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
+    
     if (buttonIdentifier.includes('yes')) {
       // Yes response to entrapment follow-up (check BEFORE entrapment)
       shouldClose = true;
       buttonType = 'entrapment_yes';
       notifyAllContacts = true;
-      confirmationMessage = `We have received a "Yes" response. The service provider has been notified and this ticket has been closed.`;
+      confirmationMessage = `[${ticketRef}] We have received a "Yes" response. The service provider has been notified and this ticket has been closed.`;
     } else if (buttonIdentifier.includes('no')) {
       // NO button - this is from the old template, just acknowledge it
       console.log('[webhook/whatsapp] NO button clicked - old template, ignoring');
@@ -868,12 +870,12 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       shouldClose = true;
       buttonType = 'test';
       notifyAllContacts = true;
-      confirmationMessage = `Test alert resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
+      confirmationMessage = `[${ticketRef}] Test alert resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
     } else if (buttonIdentifier.includes('maintenance') || buttonIdentifier.includes('service')) {
       shouldClose = true;
       buttonType = 'maintenance';
       notifyAllContacts = true;
-      confirmationMessage = `Maintenance/Service request resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
+      confirmationMessage = `[${ticketRef}] Maintenance/Service request resolved. Ticket closed for ${ticket.lift_name || 'Lift'}.`;
     } else if (buttonIdentifier.includes('entrapment')) {
       // Entrapment requires follow-up question (check AFTER yes/no)
       sendFollowUpTemplate = true;
@@ -890,6 +892,15 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         const { sendInteractiveViaBridge } = require('./lib/bridge');
         
         // Send interactive message asking if service provider was notified (session is open, no template needed)
+        console.log(`[webhook/whatsapp] Sending interactive YES button to ${fromNumber} for ticket ${ticket.id}`);
+        const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
+        const bridgeResponse = await sendInteractiveViaBridge({
+          baseUrl: BRIDGE_BASE_URL,
+          apiKey: BRIDGE_API_KEY,
+          to: fromNumber,
+          bodyText: `[${ticketRef}] Has the service provider been notified of the entrapment at ${ticket.lift_name}?`,
+          buttons: [{ id: "entrapment_yes", title: "YES" }]
+        });
         
         console.log('[webhook/whatsapp] Follow-up interactive message sent successfully');
         console.log('[webhook/whatsapp] Bridge API response:', JSON.stringify(bridgeResponse, null, 2));
@@ -1067,7 +1078,8 @@ async function processInitialAlertReminder(ticket) {
       [newCount, ticket.id]
     );
     
-    const escalationMessage = `⚠️ CRITICAL ALERT: Emergency ticket auto-closed for ${ticket.lift_name}. NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED.`;
+    const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
+    const escalationMessage = `⚠️ CRITICAL ALERT: [${ticketRef}] Emergency ticket auto-closed for ${ticket.lift_name}. NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED.`;
     try {
       await notifyAllContactsForLift(ticket.lift_id, escalationMessage);
       console.log(`[reminder] Initial alert ticket ${ticket.id} auto-closed, escalation sent`);
@@ -1093,7 +1105,8 @@ async function processInitialAlertReminder(ticket) {
         [ticket.lift_id]
       );
       
-      const liftLocation = `${ticket.site_name || 'Site'} - ${ticket.building || 'Lift'}`;
+      const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
+      const liftLocation = `[${ticketRef}] REMINDER ${newCount}/3: ${ticket.site_name || 'Site'} - ${ticket.building || 'Lift'}`;
       
       for (const contact of contactsResult.rows) {
         if (!contact.primary_msisdn) continue;
@@ -1224,7 +1237,8 @@ async function checkPendingReminders() {
         }
       } else {
         // Send reminder with interactive YES button
-        const reminderMessage = `⚠️ REMINDER ${newCount}/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}.`;
+        const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
+        const reminderMessage = `⚠️ REMINDER ${newCount}/3: [${ticketRef}] Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}.`;
         try {
           const { sendInteractiveViaBridge } = require('./lib/bridge');
           await sendInteractiveViaBridge({
