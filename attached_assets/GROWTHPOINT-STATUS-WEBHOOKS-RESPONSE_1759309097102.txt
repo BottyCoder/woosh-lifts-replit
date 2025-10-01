@@ -1,0 +1,623 @@
+WOOSH SUPPORT - RESPONSE TO GROWTHPOINT STATUS WEBHOOKS QUESTION
+
+Date: October 1, 2025
+Re: WhatsApp Delivery/Read Receipt Webhooks
+
+================================================================================
+QUICK ANSWER
+================================================================================
+
+YES - Woosh Bridge provides full delivery and read receipt webhooks!
+
+You will receive webhook callbacks for ALL message status updates:
+- sent
+- delivered
+- read
+- failed
+- deleted
+
+These are forwarded to your callback_url automatically via the dispatcher system.
+
+================================================================================
+HOW IT WORKS
+================================================================================
+
+Flow Overview:
+--------------
+1. You send a message via Woosh Bridge
+2. Meta delivers it and sends status updates (delivered, read, etc.)
+3. Woosh Bridge receives these status updates from Meta
+4. Updates are stored in the database
+5. Status events are queued in the outbox table
+6. Dispatcher forwards them to your callback_url
+7. You receive the webhook and update your UI
+
+Architecture:
+-------------
+Meta → Woosh Bridge Webhook → Database Storage → Outbox Queue → Dispatcher → Your Callback URL
+
+================================================================================
+WEBHOOK PAYLOAD STRUCTURE
+================================================================================
+
+When a status update occurs, you'll receive a webhook at your callback_url with this structure:
+
+{
+  "type": "message.status",
+  "wa_id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBI5RTNBQTA2RTMzRjdGMDc3NTEA",
+  "event_ts": "2024-10-01T10:35:22.000Z",
+  "tenant_id": "your-tenant-id",
+  "data": {
+    "id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBI5RTNBQTA2RTMzRjdGMDc3NTEA",
+    "status": "delivered",
+    "timestamp": "1696166122",
+    "recipient_id": "27824537125",
+    "conversation": {
+      "id": "conversation_id",
+      "origin": {
+        "type": "user_initiated"
+      }
+    },
+    "pricing": {
+      "billable": true,
+      "pricing_model": "CBP",
+      "category": "service"
+    }
+  }
+}
+
+Headers included:
+-----------------
+Content-Type: application/json
+X-Woosh-Tenant: your-tenant-id
+X-Woosh-Event: message.status
+X-Woosh-WAID: wamid.HBgL...
+Authorization: Bearer YOUR_CALLBACK_AUTH_TOKEN (if configured)
+X-Woosh-Signature: sha256=... (if signing is enabled)
+
+================================================================================
+STATUS VALUES YOU'LL RECEIVE
+================================================================================
+
+sent
+----
+- Message was successfully sent to Meta's servers
+- WhatsApp is attempting delivery
+- User might not have received it yet
+
+delivered
+---------
+- Message was successfully delivered to the user's device
+- User has NOT opened WhatsApp yet
+- This is the first "tick" confirmation
+
+read
+----
+- User opened WhatsApp and viewed the message
+- This is the "blue tick" / "read receipt"
+- Only available if user has read receipts enabled
+
+failed
+------
+- Message delivery failed
+- Includes error details in the payload
+- Reasons: invalid number, blocked, user deleted account, etc.
+
+deleted
+-------
+- Rare status
+- Message was deleted or expired before delivery
+
+================================================================================
+TRACKING STATUS UPDATES
+================================================================================
+
+Matching Status to Original Message:
+-------------------------------------
+The wa_id field in the status webhook is the SAME wa_id you received when you 
+sent the message. Use this to match status updates to your sent messages.
+
+Example Flow:
+-------------
+
+Step 1: Send Message
+POST /api/messages/send
+Response: {"ok": true, "wa_id": "wamid.ABC123", "accepted": true}
+
+Store in your database:
+- message_id: wamid.ABC123
+- ticket_id: EMG-001
+- sent_at: 2024-10-01 10:30:00
+- current_status: sent
+
+
+Step 2: Receive "delivered" Status Webhook
+POST to your callback_url
+{
+  "type": "message.status",
+  "wa_id": "wamid.ABC123",
+  "data": {
+    "status": "delivered",
+    "timestamp": "1696166145"
+  }
+}
+
+Update your database:
+UPDATE messages 
+SET current_status = 'delivered',
+    delivered_at = '2024-10-01 10:32:25'
+WHERE message_id = 'wamid.ABC123'
+
+
+Step 3: Receive "read" Status Webhook
+POST to your callback_url
+{
+  "type": "message.status",
+  "wa_id": "wamid.ABC123",
+  "data": {
+    "status": "read",
+    "timestamp": "1696166180"
+  }
+}
+
+Update your database:
+UPDATE messages 
+SET current_status = 'read',
+    read_at = '2024-10-01 10:33:00'
+WHERE message_id = 'wamid.ABC123'
+
+================================================================================
+DATABASE SCHEMA RECOMMENDATIONS
+================================================================================
+
+Messages Table:
+---------------
+CREATE TABLE messages (
+  id SERIAL PRIMARY KEY,
+  message_id VARCHAR(255) UNIQUE NOT NULL,  -- wa_id from send response
+  ticket_id VARCHAR(100),
+  contact_phone VARCHAR(50),
+  message_text TEXT,
+  sent_at TIMESTAMP NOT NULL,
+  delivered_at TIMESTAMP,                   -- When status=delivered
+  read_at TIMESTAMP,                        -- When status=read
+  current_status VARCHAR(50),               -- 'sent' | 'delivered' | 'read' | 'failed'
+  error_code VARCHAR(50),                   -- If failed
+  error_message TEXT,                       -- If failed
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_msg_id ON messages(message_id);
+CREATE INDEX idx_ticket ON messages(ticket_id);
+
+Status Events Table (optional, for audit trail):
+-------------------------------------------------
+CREATE TABLE message_status_events (
+  id SERIAL PRIMARY KEY,
+  message_id VARCHAR(255) NOT NULL,
+  status VARCHAR(50) NOT NULL,              -- 'sent' | 'delivered' | 'read' | 'failed'
+  event_ts TIMESTAMP NOT NULL,
+  raw_payload JSONB,                        -- Full webhook payload
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_status_msg ON message_status_events(message_id);
+
+================================================================================
+IMPLEMENTATION EXAMPLE
+================================================================================
+
+Webhook Handler (Your System):
+-------------------------------
+
+app.post('/api/woosh/webhook', async (req, res) => {
+  try {
+    const { type, wa_id, data } = req.body;
+    
+    // Verify it's a status update
+    if (type !== 'message.status') {
+      return res.status(200).json({ ok: true, ignored: true });
+    }
+    
+    const status = data.status;           // 'delivered' or 'read' or 'failed'
+    const timestamp = data.timestamp;      // Unix timestamp
+    const recipientId = data.recipient_id; // User's phone number
+    
+    // Find the message in your database
+    const message = await db.query(
+      'SELECT * FROM messages WHERE message_id = $1',
+      [wa_id]
+    );
+    
+    if (!message.rows.length) {
+      console.warn('Status update for unknown message:', wa_id);
+      return res.status(200).json({ ok: true, warning: 'unknown_message' });
+    }
+    
+    // Update the message status
+    const updateFields = {
+      current_status: status
+    };
+    
+    if (status === 'delivered') {
+      updateFields.delivered_at = new Date(parseInt(timestamp) * 1000);
+    } else if (status === 'read') {
+      updateFields.read_at = new Date(parseInt(timestamp) * 1000);
+    } else if (status === 'failed') {
+      updateFields.error_code = data.errors?.[0]?.code;
+      updateFields.error_message = data.errors?.[0]?.title;
+    }
+    
+    await db.query(
+      `UPDATE messages 
+       SET current_status = $1,
+           delivered_at = COALESCE($2, delivered_at),
+           read_at = COALESCE($3, read_at),
+           error_code = COALESCE($4, error_code),
+           error_message = COALESCE($5, error_message)
+       WHERE message_id = $6`,
+      [
+        updateFields.current_status,
+        updateFields.delivered_at || null,
+        updateFields.read_at || null,
+        updateFields.error_code || null,
+        updateFields.error_message || null,
+        wa_id
+      ]
+    );
+    
+    // Optional: Store in audit trail
+    await db.query(
+      `INSERT INTO message_status_events 
+       (message_id, status, event_ts, raw_payload)
+       VALUES ($1, $2, $3, $4)`,
+      [wa_id, status, new Date(parseInt(timestamp) * 1000), data]
+    );
+    
+    // Emit event to your UI (websocket, SSE, etc.)
+    websocket.emit('message-status-update', {
+      ticketId: message.rows[0].ticket_id,
+      messageId: wa_id,
+      status: status,
+      timestamp: new Date(parseInt(timestamp) * 1000)
+    });
+    
+    // Respond to Woosh Bridge
+    return res.status(200).json({ ok: true, processed: true });
+    
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    // Still return 200 to prevent retries for processing errors
+    return res.status(200).json({ ok: false, error: error.message });
+  }
+});
+
+================================================================================
+UI IMPLEMENTATION
+================================================================================
+
+Displaying Status Ticks:
+-------------------------
+
+In your emergency alert UI, you can now show:
+
+Sent (single grey tick):
+  current_status = 'sent'
+  Icon: ✓
+
+Delivered (double grey ticks):
+  current_status = 'delivered'
+  Icon: ✓✓
+
+Read (double blue ticks):
+  current_status = 'read'
+  Icon: ✓✓ (blue color)
+
+Failed (red X):
+  current_status = 'failed'
+  Icon: ✗
+  Show error_message to support team
+
+Real-time Updates:
+------------------
+When a status webhook arrives:
+1. Update database
+2. Emit websocket event
+3. UI listens for event
+4. Update status icon in real-time
+5. User sees message status change from "sent" → "delivered" → "read"
+
+Example UI Component (React):
+------------------------------
+
+function MessageStatus({ message }) {
+  const getStatusIcon = () => {
+    switch (message.current_status) {
+      case 'sent':
+        return <span className="text-gray-400">✓</span>;
+      case 'delivered':
+        return <span className="text-gray-400">✓✓</span>;
+      case 'read':
+        return <span className="text-blue-500">✓✓</span>;
+      case 'failed':
+        return <span className="text-red-500" title={message.error_message}>✗</span>;
+      default:
+        return <span className="text-gray-300">⋯</span>;
+    }
+  };
+  
+  return (
+    <div className="message-status">
+      {getStatusIcon()}
+      {message.read_at && (
+        <small>Read {formatTime(message.read_at)}</small>
+      )}
+    </div>
+  );
+}
+
+================================================================================
+TIMING & RELIABILITY
+================================================================================
+
+Delivery Speed:
+---------------
+- Status webhooks are usually received within 1-5 seconds of the actual event
+- "delivered" comes quickly (seconds after send)
+- "read" comes when user actually opens WhatsApp
+
+Retry Logic:
+------------
+Woosh Bridge dispatcher includes automatic retry with exponential backoff:
+- First attempt: Immediate
+- Retry 1: After 2 seconds
+- Retry 2: After 4 seconds
+- Retry 3: After 8 seconds
+- Retry 4: After 16 seconds
+- Maximum backoff: 300 seconds (5 minutes)
+
+If your endpoint is down:
+-------------------------
+- Status updates are queued in the outbox table
+- Dispatcher keeps retrying with backoff
+- You won't lose any status updates
+- When your endpoint comes back online, queued updates are delivered
+
+Your Webhook Endpoint Requirements:
+------------------------------------
+- Must return HTTP 200 (even if processing fails internally)
+- Should respond within 10 seconds (dispatcher timeout)
+- Should be idempotent (handle duplicate deliveries gracefully)
+- Use the wa_id + status + timestamp combination for deduplication
+
+================================================================================
+READ RECEIPTS LIMITATIONS
+================================================================================
+
+Important Note About "read" Status:
+------------------------------------
+
+You will ONLY receive "read" status if:
+1. The user has read receipts ENABLED in their WhatsApp settings
+2. The user actually opens the chat and views the message
+
+If user has read receipts disabled:
+- You will receive "sent" and "delivered"
+- You will NOT receive "read" (even if they read it)
+- This is a WhatsApp privacy feature, not a Woosh limitation
+
+Best Practice:
+--------------
+In your UI, treat "delivered" as sufficient confirmation for emergency alerts.
+"read" is a nice-to-have bonus when available, but don't rely on it for 
+critical workflows since some users disable read receipts.
+
+================================================================================
+TESTING STATUS WEBHOOKS
+================================================================================
+
+Test Flow:
+----------
+1. Send a test message to your WhatsApp number
+2. Wait 2-3 seconds
+3. Check your webhook endpoint logs - you should receive "delivered" webhook
+4. Open WhatsApp on your phone and view the message
+5. Check your webhook endpoint logs - you should receive "read" webhook
+
+Verification:
+-------------
+Check Woosh Bridge database:
+SELECT * FROM router.status_events 
+WHERE wa_id = 'your-message-id' 
+ORDER BY event_ts;
+
+You should see entries for:
+- sent (usually immediate)
+- delivered (within seconds)
+- read (when you opened WhatsApp)
+
+Check your callback logs:
+- Should show POST requests from Woosh Bridge
+- With X-Woosh-Event: message.status header
+- With status data in the payload
+
+================================================================================
+CALLBACK URL CONFIGURATION
+================================================================================
+
+Your callback URL is stored in the tenants table:
+- callback_url: https://your-domain.com/api/woosh/webhook
+- callback_auth_token: Your bearer token (optional but recommended)
+
+The dispatcher automatically:
+- Sends status updates to your callback_url
+- Includes Authorization: Bearer YOUR_TOKEN header
+- Includes X-Woosh-Event and other metadata headers
+- Retries on failure with exponential backoff
+
+No additional configuration needed - status webhooks are enabled by default
+for all tenants with a callback_url configured.
+
+================================================================================
+COMPLETE EXAMPLE: EMERGENCY ALERT STATUS TRACKING
+================================================================================
+
+Scenario: Track lift emergency alert from send to read
+
+Step 1: Send Emergency Alert
+-----------------------------
+POST https://wa.woosh.ai/api/messages/send
+{
+  "to": "27824537125",
+  "text": "Emergency Alert: LIFT-A - Floor 3 - Entrapment reported"
+}
+
+Response:
+{"ok": true, "wa_id": "wamid.ABC123", "accepted": true}
+
+Database:
+INSERT INTO messages (message_id, ticket_id, lift_id, contact_phone, message_text, sent_at, current_status)
+VALUES ('wamid.ABC123', 'EMG-001', 'LIFT-A', '27824537125', 'Emergency Alert...', NOW(), 'sent')
+
+
+Step 2: Receive "delivered" Webhook (3 seconds later)
+------------------------------------------------------
+POST to your callback_url
+{
+  "type": "message.status",
+  "wa_id": "wamid.ABC123",
+  "data": {"status": "delivered", "timestamp": "1696166145"}
+}
+
+Database:
+UPDATE messages 
+SET current_status = 'delivered', delivered_at = '2024-10-01 10:32:25'
+WHERE message_id = 'wamid.ABC123'
+
+UI Update:
+Status icon changes from ✓ to ✓✓
+
+
+Step 3: Receive "read" Webhook (30 seconds later, when user opens WhatsApp)
+----------------------------------------------------------------------------
+POST to your callback_url
+{
+  "type": "message.status",
+  "wa_id": "wamid.ABC123",
+  "data": {"status": "read", "timestamp": "1696166175"}
+}
+
+Database:
+UPDATE messages 
+SET current_status = 'read', read_at = '2024-10-01 10:32:55'
+WHERE message_id = 'wamid.ABC123'
+
+UI Update:
+Status icon changes from ✓✓ (grey) to ✓✓ (blue)
+Show "Read at 10:32 AM"
+
+
+Step 4: User Clicks Button (from previous button tracking doc)
+---------------------------------------------------------------
+Your system now knows:
+- Alert was sent at 10:32:00
+- Alert was delivered at 10:32:25
+- Alert was read at 10:32:55
+- User responded "Entrapment" at 10:33:10
+
+Total response time: 70 seconds from send to response
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+Failed Status Example:
+----------------------
+{
+  "type": "message.status",
+  "wa_id": "wamid.ABC123",
+  "data": {
+    "status": "failed",
+    "timestamp": "1696166145",
+    "errors": [
+      {
+        "code": 131047,
+        "title": "Re-engagement message",
+        "details": "Re-engagement message sent to user"
+      }
+    ]
+  }
+}
+
+Common Error Codes:
+-------------------
+131047: Outside 24-hour window (use template instead)
+131026: Message undeliverable (invalid number, user deleted account)
+131031: User's phone number is part of an experiment
+130472: User's number is not a WhatsApp user
+
+Handling Failures:
+------------------
+When you receive status="failed":
+1. Store the error_code and error_message
+2. Mark message as failed in UI
+3. Alert support team or system admin
+4. For 131047: Automatically retry with template message
+5. For 131026: Mark contact as invalid, don't retry
+
+================================================================================
+SUMMARY & NEXT STEPS
+================================================================================
+
+YES - Full Status Webhook Support:
+-----------------------------------
+✅ Woosh Bridge receives all status updates from Meta
+✅ Stores them in the database
+✅ Forwards them to your callback_url automatically
+✅ Includes sent, delivered, read, failed, deleted statuses
+✅ Includes retry logic with exponential backoff
+✅ No additional configuration needed (works with your existing callback_url)
+
+You Can Now:
+------------
+✅ Show delivery/read status in your UI
+✅ Track message lifecycle from send → delivered → read
+✅ Calculate response times
+✅ Identify undelivered messages
+✅ Handle failures gracefully
+✅ Provide real-time status updates to users
+
+Implementation Checklist:
+-------------------------
+1. ✅ Add delivered_at and read_at columns to your messages table
+2. ✅ Create webhook handler for type="message.status"
+3. ✅ Update messages based on wa_id matching
+4. ✅ Add status icons to your UI
+5. ✅ Test with real messages
+6. ✅ Add error handling for failed statuses
+7. ✅ Optional: Add audit trail table for all status events
+
+You're NOT limited to just "sent":
+-----------------------------------
+You will receive full status lifecycle for every message you send through 
+Woosh Bridge. The status webhooks are production-ready and actively being 
+used by other customers.
+
+================================================================================
+SUPPORT
+================================================================================
+
+If you need:
+- Help setting up the webhook handler
+- Database schema assistance
+- UI implementation examples
+- Testing support
+- Webhook signature verification details
+
+Please reach out to Woosh Support.
+
+================================================================================
+
+Woosh Support Team
+October 1, 2025
+
