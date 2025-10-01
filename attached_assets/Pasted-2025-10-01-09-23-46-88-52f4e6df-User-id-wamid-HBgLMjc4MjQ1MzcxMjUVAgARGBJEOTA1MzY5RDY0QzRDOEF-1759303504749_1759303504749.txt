@@ -1,0 +1,208 @@
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBJEOTA1MzY5RDY0QzRDOEFBQjQA",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"status": "sent",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"timestamp": "1759303423",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"recipient_id": "27824537125",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"conversation": {
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"id": "fcf3e42bc2c99d86448b2b193228ffef",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"expiration_timestamp": "1759303423",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"origin": {
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"type": "utility"
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+},
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"pricing": {
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"billable": false,
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"pricing_model": "PMP",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"category": "utility",
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"type": "free_customer_service"
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+]
+2025-10-01 09:23:46.88
+52f4e6df
+User
+},
+2025-10-01 09:23:46.88
+52f4e6df
+User
+"field": "messages"
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+]
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+]
+2025-10-01 09:23:46.88
+52f4e6df
+User
+}
+2025-10-01 09:23:46.88
+52f4e6df
+User
+[webhook/whatsapp] Not a button click, ignoring: { hasMessage: false, messageType: undefined, reason: 'no_message' }
+2025-10-01 09:23:46.88
+52f4e6df
+User
+POST /webhooks/whatsapp 200 33 - 1.749 ms
+2025-10-01 09:23:46.88
+52f4e6df
+User
+{"level":"info","route":"/webhooks/whatsapp","method":"POST","status":200,"dur_ms":2,"ts":"2025-10-01T07:23:46.885Z"}
+2025-10-01 09:23:47.06
+52f4e6df
+User
+[HTTP] POST /webhooks/whatsapp from 127.0.0.1
+2025-10-01 09:23:47.06
+52f4e6df
+User
+[HTTP] Headers: {"host":"gplifts.woosh.ai","user-agent":"node","content-length":"577","accept":"*/*","accept-encoding":"br, gzip, deflate","accept-language":"*","authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3NTkyNDQ0ODJ9.uqlQIPrenJAqw-h-c49tOQaPjEu0Rpx8rh84eXYLkiY","content-type":"application/json","sec-fetch-mode":"cors","server-timing":"depproxy;dur=1759303427088, pid1req;dur=1759303427065","via":"1.1 google","x-cloud-trace-context":"f3c689fea263c615a5010a88f638c858/15491419440701181371","x-forwarded-for":"34.34.233.153, 34.111.179.208, 35.191.112.177","x-forwarded-host":"gplifts.woosh.ai","x-forwarded-proto":"https","x-replit-user-bio":"","x-replit-user-id":"","x-replit-user-name":"","x-replit-user-profile-image":"","x-replit-user-roles":"","x-replit-user-teams":"","x-replit-user-url":""}
+2025-10-01 09:23:47.06
+52f4e6df
+User
+[webhook/whatsapp] Authentication successful
+2025-10-01 09:23:47.06
+52f4e6df
+User
+[webhook/whatsapp] Received: {
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"object": "whatsapp_business_account",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"entry": [
+2025-10-01 09:23:47.06
+52f4e6df
+User
+{
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"id": "620143974365970",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"changes": [
+2025-10-01 09:23:47.06
+52f4e6df
+User
+{
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"value": {
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"messaging_product": "whatsapp",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"metadata": {
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"display_phone_number": "27690232755",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"phone_number_id": "861610750363214"
+2025-10-01 09:23:47.06
+52f4e6df
+User
+},
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"statuses": [
+2025-10-01 09:23:47.06
+52f4e6df
+User
+{
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBJEOTA1MzY5RDY0QzRDOEFBQjQA",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"status": "delivered",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"timestamp": "1759303424",
+2025-10-01 09:23:47.06
+52f4e6df
+User
+"recipient_id": "27824537125",
+
+Wrap
+
+Colors
