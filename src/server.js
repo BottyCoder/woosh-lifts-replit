@@ -752,16 +752,24 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         console.log('[webhook/whatsapp] Bridge API response:', JSON.stringify(bridgeResponse, null, 2));
         
         // Update ticket to track that entrapment was clicked and start reminder timer
-        await query(
+        console.log(`[webhook/whatsapp] Updating ticket ${ticket.id} to entrapment_awaiting_confirmation state`);
+        const updateResult = await query(
           `UPDATE tickets 
            SET button_clicked = 'entrapment_awaiting_confirmation', 
                responded_by = $1, 
                reminder_count = 0,
                last_reminder_at = now(),
                updated_at = now()
-           WHERE id = $2`,
+           WHERE id = $2
+           RETURNING id, button_clicked, reminder_count, last_reminder_at`,
           [contact.id, ticket.id]
         );
+        
+        if (updateResult.rows.length === 0) {
+          console.error(`[webhook/whatsapp] CRITICAL: Failed to update ticket ${ticket.id} - no rows affected!`);
+        } else {
+          console.log(`[webhook/whatsapp] Ticket ${ticket.id} updated successfully:`, updateResult.rows[0]);
+        }
         
         logEvent('entrapment_followup_sent', { 
           ticket_id: ticket.id, 
@@ -770,7 +778,20 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         });
         
       } catch (err) {
-        console.error('[webhook/whatsapp] Failed to send follow-up template:', err);
+        console.error('[webhook/whatsapp] CRITICAL ERROR in entrapment handler:', {
+          error: err.message,
+          stack: err.stack,
+          ticket_id: ticket.id,
+          contact_id: contact.id
+        });
+        
+        // Still return success to Woosh Bridge (don't retry webhook)
+        return res.status(200).json({ 
+          status: 'error', 
+          processed: false, 
+          error: 'Failed to process entrapment',
+          ticket_id: ticket.id
+        });
       }
       
       // After sending follow-up template, return early (reminders will be handled by background job)
