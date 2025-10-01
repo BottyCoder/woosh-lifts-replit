@@ -77,9 +77,9 @@ Preferred communication style: Simple, everyday language.
 - API Endpoint: `/v1/send`
 - Authentication: Tenant key via `x-tenant-key` header (BRIDGE_API_KEY env var)
 - WhatsApp Business Number: +27 69 023 2755 (Growthpoint)
-- Template-based messaging using `growthpoint_lift_emergency` template (configurable)
+- Template-based messaging using `growthpoint_lift_emergency_v2` template with 1 parameter (lift location)
 - Template language: `en` (must match exact language code in WhatsApp Manager)
-- Follow-up template: `growthpoint_entrapment_confirmed`
+- Follow-up template: `growthpoint_entrapment_confirmed` (YES button only, no NO button)
 - Webhook callbacks for interactive button responses
 - Button click payload structure: `entry[0].changes[0].value.messages[0].interactive.button_reply.id`
 
@@ -126,3 +126,16 @@ ADMIN_TOKEN - Admin API authentication token
 3. Template-based formatting for WhatsApp
 4. Plain text for SMS
 5. Error handling with retry logic (30-second timeout)
+
+**Entrapment Flow with Auto-Reminders**:
+1. User clicks "Entrapment" button on initial emergency alert
+2. System sends follow-up template (`growthpoint_entrapment_confirmed`) with YES button only
+3. Ticket marked as `entrapment_awaiting_confirmation`, reminder timer starts automatically
+4. If YES clicked: Send "We have received a "Yes" response. The service provider has been notified and this ticket has been closed." to all contacts, close ticket
+5. If no response within 1 minute (testing interval, will be 5 minutes in production):
+   - Send reminder 1/3: "⚠️ REMINDER 1/3: Please confirm that the service provider has been notified..."
+   - Wait 1 minute, send reminder 2/3
+   - Wait 1 minute, send reminder 3/3
+   - After 3rd reminder with no response, auto-close ticket with note "Auto-closed: Service provider notification not confirmed after 3 reminders"
+   - Send alert to all contacts: "⚠️ ALERT: Ticket auto-closed... Please follow up immediately."
+6. Background job runs every 60 seconds to check for pending reminders

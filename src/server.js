@@ -698,12 +698,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       shouldClose = true;
       buttonType = 'entrapment_yes';
       notifyAllContacts = true;
-      confirmationMessage = `Ticket closed - Service provider has been notified of entrapment at ${ticket.lift_name || 'Lift'}.`;
-    } else if (buttonIdentifier.includes('no')) {
-      // No response to entrapment follow-up (check BEFORE entrapment)
-      // Start reminder system - send reminder every 5 minutes, 3 times
-      buttonType = 'entrapment_no';
-      console.log('[webhook/whatsapp] Entrapment NO clicked, starting reminder system');
+      confirmationMessage = `We have received a "Yes" response. The service provider has been notified and this ticket has been closed.`;
     } else if (buttonIdentifier.includes('test')) {
       shouldClose = true;
       buttonType = 'test';
@@ -740,14 +735,16 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         
         console.log('[webhook/whatsapp] Follow-up template sent');
         
-        // Update ticket to track that entrapment was clicked
+        // Update ticket to track that entrapment was clicked and start reminder timer
         await query(
           `UPDATE tickets 
-           SET button_clicked = $1, 
-               responded_by = $2, 
+           SET button_clicked = 'entrapment_awaiting_confirmation', 
+               responded_by = $1, 
+               reminder_count = 0,
+               last_reminder_at = now(),
                updated_at = now()
-           WHERE id = $3`,
-          [buttonType, contact.id, ticket.id]
+           WHERE id = $2`,
+          [contact.id, ticket.id]
         );
         
         logEvent('entrapment_followup_sent', { 
@@ -759,49 +756,13 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       } catch (err) {
         console.error('[webhook/whatsapp] Failed to send follow-up template:', err);
       }
-    }
-    
-    // Handle NO button - start reminder system
-    if (buttonType === 'entrapment_no') {
-      // Send first reminder immediately
-      const reminderMessage = `⚠️ REMINDER 1/3: Please confirm that the service provider has been notified of the entrapment at ${ticket.lift_name}. Reply YES when notified.`;
-      try {
-        await sendTextViaBridge({
-          baseUrl: BRIDGE_BASE_URL,
-          apiKey: BRIDGE_API_KEY,
-          to: fromNumber,
-          text: reminderMessage
-        });
-        
-        // Update ticket with reminder count = 1 (first reminder sent)
-        await query(
-          `UPDATE tickets 
-           SET button_clicked = $1, 
-               responded_by = $2, 
-               reminder_count = 1,
-               last_reminder_at = now(),
-               updated_at = now()
-           WHERE id = $3`,
-          [buttonType, contact.id, ticket.id]
-        );
-        
-        console.log('[webhook/whatsapp] First reminder sent (1/3)');
-        
-        logEvent('entrapment_reminder_started', { 
-          ticket_id: ticket.id, 
-          contact_id: contact.id,
-          contact_name: contact.display_name,
-          reminder_count: 1
-        });
-      } catch (err) {
-        console.error('[webhook/whatsapp] Failed to send first reminder:', err);
-      }
       
+      // After sending follow-up template, return early (reminders will be handled by background job)
       return res.status(200).json({ 
         status: 'ok', 
         processed: true, 
         ticket_id: ticket.id,
-        reminder_started: true
+        followup_sent: true
       });
     }
     
@@ -913,9 +874,9 @@ async function checkPendingReminders() {
   try {
     // Find tickets that need reminders:
     // - Status is open
-    // - button_clicked is 'entrapment_no'
+    // - button_clicked is 'entrapment_awaiting_confirmation'
     // - reminder_count < 3
-    // - last_reminder_at was more than 5 minutes ago
+    // - last_reminder_at was more than 1 minute ago
     const result = await query(
       `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
               c.primary_msisdn, c.display_name
@@ -923,9 +884,9 @@ async function checkPendingReminders() {
        JOIN lifts l ON t.lift_id = l.id
        JOIN contacts c ON t.responded_by = c.id
        WHERE t.status = 'open'
-         AND t.button_clicked = 'entrapment_no'
+         AND t.button_clicked = 'entrapment_awaiting_confirmation'
          AND t.reminder_count < 3
-         AND t.last_reminder_at < NOW() - INTERVAL '5 minutes'`
+         AND t.last_reminder_at < NOW() - INTERVAL '1 minute'`
     );
     
     for (const ticket of result.rows) {
