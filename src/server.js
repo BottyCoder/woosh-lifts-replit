@@ -1008,6 +1008,17 @@ async function checkPendingReminders() {
     for (const ticket of result.rows) {
       const newCount = (ticket.reminder_count || 0) + 1;
       console.log(`[reminder] Processing ticket ${ticket.id}, reminder ${newCount}/3`);
+      console.log(`[reminder] Ticket data:`, { 
+        id: ticket.id, 
+        responded_by: ticket.responded_by, 
+        primary_msisdn: ticket.primary_msisdn,
+        display_name: ticket.display_name
+      });
+      
+      if (!ticket.primary_msisdn) {
+        console.error(`[reminder] Ticket ${ticket.id} has no primary_msisdn, skipping`);
+        continue;
+      }
       
       if (newCount > 3) {
         // All 3 reminders sent with no response - close ticket with note
