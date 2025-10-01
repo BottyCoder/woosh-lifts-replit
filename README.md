@@ -42,7 +42,7 @@ In your Replit project:
 ```
 DATABASE_URL=postgresql://username:password@host:port/database
 BRIDGE_API_KEY=your_whatsapp_bridge_api_key
-BRIDGE_TEMPLATE_NAME=growthpoint_testv1
+BRIDGE_TEMPLATE_NAME=growthpoint_lift_emergency
 BRIDGE_TEMPLATE_LANG=en
 SMSPORTAL_HMAC_SECRET=your_hmac_secret
 ```

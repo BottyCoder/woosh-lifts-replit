@@ -18,7 +18,7 @@ const adminRoutes = require('./routes/admin');
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
 const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY || "";
-const BRIDGE_TEMPLATE_NAME = process.env.BRIDGE_TEMPLATE_NAME || "growthpoint_testv1";
+const BRIDGE_TEMPLATE_NAME = process.env.BRIDGE_TEMPLATE_NAME || "growthpoint_lift_emergency";
 const BRIDGE_TEMPLATE_LANG = ((process.env.BRIDGE_TEMPLATE_LANG || "en").trim().split(/[_-]/)[0] || "en");
 const REGISTRY_PATH = process.env.REGISTRY_PATH || "./data/registry.csv";
 const HMAC_SECRET = process.env.SMSPORTAL_HMAC_SECRET || "";
