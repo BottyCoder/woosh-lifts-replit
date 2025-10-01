@@ -139,8 +139,8 @@ ADMIN_TOKEN - Admin API authentication token
 4. If any button clicked: Timer stops, ticket proceeds to appropriate flow
 
 **Entrapment Flow with Auto-Reminders**:
-1. User clicks "Entrapment" button on initial emergency alert
-2. System sends follow-up template (`growthpoint_entrapment_confirmed`) with YES button only
+1. User clicks "Entrapment" button on initial emergency alert (opens 24-hour WhatsApp session)
+2. System sends interactive session message with YES button only: "Has the service provider been notified of the entrapment at [Location]?"
 3. Ticket marked as `entrapment_awaiting_confirmation`, reminder timer starts automatically
 4. If YES clicked: Send "We have received a "Yes" response. The service provider has been notified and this ticket has been closed." to all contacts, close ticket
 5. If no response within 1 minute (testing interval, will be 5 minutes in production):
@@ -150,3 +150,4 @@ ADMIN_TOKEN - Admin API authentication token
    - After 3rd reminder with no response, auto-close ticket with note "Auto-closed: Service provider notification not confirmed after 3 reminders"
    - Send alert to all contacts: "⚠️ ALERT: Ticket auto-closed... Please follow up immediately."
 6. Background job runs every 60 seconds to check for pending reminders (both initial alerts and entrapment confirmations)
+7. All interactive messages use `/api/messages/send` endpoint within the 24-hour session window

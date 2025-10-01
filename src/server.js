@@ -723,21 +723,21 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       return res.status(200).json({ status: 'ok', processed: false, reason: 'unknown_button' });
     }
     
-    // Handle follow-up template for entrapment
+    // Handle follow-up message for entrapment
     if (sendFollowUpTemplate) {
       try {
-        const { sendTemplateViaBridge } = require('./lib/bridge');
+        const { sendInteractiveViaBridge } = require('./lib/bridge');
         
-        // Send follow-up template asking if service provider was notified
-        await sendTemplateViaBridge({
+        // Send interactive message asking if service provider was notified (session is open, no template needed)
+        await sendInteractiveViaBridge({
           baseUrl: BRIDGE_BASE_URL,
           apiKey: BRIDGE_API_KEY,
           to: fromNumber,
-          name: 'growthpoint_entrapment_confirmed',
-          languageCode: 'en'
+          bodyText: `Has the service provider been notified of the entrapment at ${ticket.lift_name}?`,
+          buttons: [{ id: "entrapment_yes", title: "YES" }]
         });
         
-        console.log('[webhook/whatsapp] Follow-up template sent');
+        console.log('[webhook/whatsapp] Follow-up interactive message sent');
         
         // Update ticket to track that entrapment was clicked and start reminder timer
         await query(
