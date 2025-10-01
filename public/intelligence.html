@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Woosh Lifts - Executive Intelligence Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .header .timestamp {
+            color: #999;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h3 {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .metric {
+            font-size: 3em;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-good { background: #10b981; }
+        .status-warning { background: #f59e0b; }
+        .status-critical { background: #ef4444; }
+
+        .performance-list {
+            list-style: none;
+        }
+
+        .performance-item {
+            padding: 15px;
+            margin: 10px 0;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .performance-item:hover {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+            transform: translateX(5px);
+        }
+
+        .performance-name {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 5px;
+        }
+
+        .performance-stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .stat-badge {
+            background: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .stat-badge.good { color: #10b981; border: 2px solid #10b981; }
+        .stat-badge.warning { color: #f59e0b; border: 2px solid #f59e0b; }
+        .stat-badge.bad { color: #ef4444; border: 2px solid #ef4444; }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        .insight-card {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(245, 158, 11, 0.1));
+            border-left: 4px solid #ef4444;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .insight-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #ef4444;
+            margin-bottom: 10px;
+        }
+
+        .recommendation-card {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+            border-left: 4px solid #10b981;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .recommendation-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #10b981;
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2em;
+            color: #667eea;
+        }
+
+        .error {
+            background: #fee;
+            color: #c00;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+
+        .badge-new {
+            background: #10b981;
+            color: white;
+        }
+
+        .badge-live {
+            background: #ef4444;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .progress-bar {
+            background: #e5e7eb;
+            height: 8px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 1s ease;
+        }
+
+        .grid-2col {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 968px) {
+            .grid-2col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .emoji {
+            font-size: 2em;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Executive Intelligence Dashboard</h1>
+            <div class="subtitle">Woosh Lifts Emergency Response System - Real-Time Analytics</div>
+            <div class="timestamp">
+                <span class="badge badge-live">LIVE</span>
+                Last Updated: <span id="lastUpdate">Loading...</span>
+                <button class="refresh-btn" onclick="loadAllData()" style="float: right;">🔄 Refresh Data</button>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="loading">
+            <div>⚡ Loading intelligence data...</div>
+        </div>
+
+        <div id="dashboard" style="display: none;">
+            <!-- Key Metrics -->
+            <div class="grid">
+                <div class="card">
+                    <div class="metric-label">System Health</div>
+                    <div class="metric" id="systemHealth">—</div>
+                    <div style="margin-top: 10px;">
+                        <span class="status-indicator status-good"></span>
+                        <span id="healthStatus">Checking...</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="metric-label">Message Success Rate</div>
+                    <div class="metric" id="messageSuccess">—</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="messageProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="metric-label">Response Rate</div>
+                    <div class="metric" id="responseRate">—</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="responseProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="metric-label">Open Tickets</div>
+                    <div class="metric" id="openTickets">—</div>
+                    <div style="margin-top: 10px;">
+                        <span id="ticketStatus">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content Grid -->
+            <div class="grid-2col">
+                <!-- Left Column -->
+                <div>
+                    <!-- Performance Rankings -->
+                    <div class="card">
+                        <h3>👥 Contact Performance Rankings</h3>
+                        <ul class="performance-list" id="performanceList">
+                            <li class="loading">Loading performance data...</li>
+                        </ul>
+                    </div>
+
+                    <!-- Button Click Patterns -->
+                    <div class="card">
+                        <h3>🔘 Button Click Patterns</h3>
+                        <div class="chart-container">
+                            <canvas id="buttonChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Ticket Timeline -->
+                    <div class="card">
+                        <h3>📈 Ticket Volume (Last 7 Days)</h3>
+                        <div class="chart-container">
+                            <canvas id="ticketTimelineChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column -->
+                <div>
+                    <!-- Critical Insights -->
+                    <div class="card">
+                        <h3>🚨 Critical Insights</h3>
+                        <div id="criticalInsights">
+                            <div class="loading">Analyzing patterns...</div>
+                        </div>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div class="card">
+                        <h3>💡 Recommendations</h3>
+                        <div id="recommendations">
+                            <div class="loading">Generating recommendations...</div>
+                        </div>
+                    </div>
+
+                    <!-- Live Activity -->
+                    <div class="card">
+                        <h3>🔄 Live Activity <span class="badge badge-live">LIVE</span></h3>
+                        <div id="liveActivity" style="max-height: 400px; overflow-y: auto;">
+                            <div class="loading">Monitoring events...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://gplifts.woosh.ai/api/troubleshoot';
+        const AI_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3MNTkyNDc4ODAsInNjb3BlIjoiYWRtaW4ifQ._q0Gv0aK1l1sXkJYx2Tb3Zk2r8V5yQYhQyqP8w1Z0b4';
+
+        let buttonChart = null;
+        let ticketChart = null;
+
+        async function apiCall(endpoint) {
+            const response = await fetch(`${API_BASE}${endpoint}`, {
+                headers: { 'X-AI-Token': AI_TOKEN }
+            });
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            return response.json();
+        }
+
+        async function loadMetrics() {
+            const data = await apiCall('/metrics');
+            const metrics = data.data;
+
+            // Update metrics
+            document.getElementById('systemHealth').textContent = '✅ Healthy';
+            document.getElementById('healthStatus').textContent = `DB: ${metrics.system.memory_mb}MB, Uptime: ${Math.floor(metrics.system.uptime_seconds / 60)}m`;
+
+            const msgSuccess = parseFloat(metrics.message_delivery.success_rate_percent);
+            document.getElementById('messageSuccess').textContent = msgSuccess.toFixed(1) + '%';
+            document.getElementById('messageProgress').style.width = msgSuccess + '%';
+
+            const respRate = parseFloat(metrics.button_responses.response_rate_percent);
+            document.getElementById('responseRate').textContent = respRate.toFixed(1) + '%';
+            document.getElementById('responseProgress').style.width = respRate + '%';
+        }
+
+        async function loadTickets() {
+            const data = await apiCall('/tickets?status=open');
+            const openCount = data.pagination.total;
+            
+            document.getElementById('openTickets').textContent = openCount;
+            
+            if (openCount === 0) {
+                document.getElementById('ticketStatus').innerHTML = '<span class="status-indicator status-good"></span>No active emergencies';
+            } else if (openCount === 1) {
+                document.getElementById('ticketStatus').innerHTML = '<span class="status-indicator status-warning"></span>1 active emergency';
+            } else {
+                document.getElementById('ticketStatus').innerHTML = '<span class="status-indicator status-critical"></span>' + openCount + ' active emergencies';
+            }
+        }
+
+        async function loadPerformance() {
+            // Get all tickets to analyze performance
+            const ticketData = await apiCall('/tickets?limit=100');
+            const tickets = ticketData.data;
+
+            // Calculate per-contact stats
+            const contactStats = {};
+            
+            tickets.forEach(ticket => {
+                if (ticket.responded_by_name) {
+                    if (!contactStats[ticket.responded_by_name]) {
+                        contactStats[ticket.responded_by_name] = {
+                            name: ticket.responded_by_name,
+                            phone: ticket.responded_by_phone,
+                            responses: 0,
+                            totalTime: 0
+                        };
+                    }
+                    contactStats[ticket.responded_by_name].responses++;
+                    
+                    const responseTime = (new Date(ticket.updated_at) - new Date(ticket.created_at)) / 1000;
+                    contactStats[ticket.responded_by_name].totalTime += responseTime;
+                }
+            });
+
+            // Convert to array and sort
+            const performers = Object.values(contactStats).map(c => ({
+                ...c,
+                avgTime: c.totalTime / c.responses
+            })).sort((a, b) => b.responses - a.responses);
+
+            // Render performance list
+            const list = document.getElementById('performanceList');
+            list.innerHTML = '';
+
+            if (performers.length === 0) {
+                list.innerHTML = '<li style="padding: 20px; text-align: center; color: #999;">No response data yet</li>';
+                return;
+            }
+
+            performers.forEach((p, index) => {
+                const rankEmoji = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤';
+                const avgMinutes = (p.avgTime / 60).toFixed(1);
+                
+                let speedBadge = 'good';
+                if (avgMinutes > 10) speedBadge = 'warning';
+                if (avgMinutes > 60) speedBadge = 'bad';
+
+                const item = document.createElement('li');
+                item.className = 'performance-item';
+                item.innerHTML = `
+                    <div class="performance-name">${rankEmoji} ${p.name}</div>
+                    <div class="performance-stats">
+                        <span class="stat-badge good">${p.responses} responses</span>
+                        <span class="stat-badge ${speedBadge}">Avg: ${avgMinutes}m</span>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function loadButtonChart() {
+            const data = await apiCall('/analytics/timeseries?metric=button_clicks&interval=1h');
+            const datapoints = data.data.datapoints;
+
+            if (datapoints.length === 0) {
+                return;
+            }
+
+            const ctx = document.getElementById('buttonChart').getContext('2d');
+            
+            if (buttonChart) buttonChart.destroy();
+
+            buttonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: datapoints.map(d => new Date(d.time_bucket).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})),
+                    datasets: [
+                        {
+                            label: 'Test',
+                            data: datapoints.map(d => parseInt(d.test_clicks) || 0),
+                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                        },
+                        {
+                            label: 'Maintenance',
+                            data: datapoints.map(d => parseInt(d.maintenance_clicks) || 0),
+                            backgroundColor: 'rgba(245, 158, 11, 0.8)',
+                        },
+                        {
+                            label: 'Entrapment',
+                            data: datapoints.map(d => parseInt(d.entrapment_clicks) || 0),
+                            backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        async function loadTicketTimeline() {
+            const data = await apiCall('/analytics/timeseries?metric=tickets&interval=1d');
+            const datapoints = data.data.datapoints;
+
+            if (datapoints.length === 0) {
+                return;
+            }
+
+            const ctx = document.getElementById('ticketTimelineChart').getContext('2d');
+            
+            if (ticketChart) ticketChart.destroy();
+
+            ticketChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: datapoints.map(d => new Date(d.time_bucket).toLocaleDateString()),
+                    datasets: [
+                        {
+                            label: 'Total Tickets',
+                            data: datapoints.map(d => parseInt(d.count) || 0),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Closed',
+                            data: datapoints.map(d => parseInt(d.closed_count) || 0),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        async function loadInsights() {
+            const tickets = await apiCall('/tickets?limit=100');
+            const metrics = await apiCall('/metrics');
+
+            const insights = document.getElementById('criticalInsights');
+            insights.innerHTML = '';
+
+            const data = tickets.data;
+            const metricsData = metrics.data;
+
+            // Insight 1: Response rate analysis
+            const responseRate = parseFloat(metricsData.button_responses.response_rate_percent);
+            if (responseRate < 70) {
+                insights.innerHTML += `
+                    <div class="insight-card">
+                        <div class="insight-title">⚠️ Low Response Rate</div>
+                        <p>Current ${responseRate.toFixed(1)}% is below industry standard (70-80%)</p>
+                        <p><strong>Impact:</strong> ${100 - responseRate.toFixed(1)}% of emergencies get no human response</p>
+                    </div>
+                `;
+            }
+
+            // Insight 2: Check for Marc dependency
+            const marcResponses = data.filter(t => t.responded_by_name === 'Marc').length;
+            const totalResponses = data.filter(t => t.responded_by_name).length;
+            
+            if (totalResponses > 0 && (marcResponses / totalResponses) > 0.7) {
+                const marcPercent = ((marcResponses / totalResponses) * 100).toFixed(1);
+                insights.innerHTML += `
+                    <div class="insight-card">
+                        <div class="insight-title">🎯 Single Point of Failure</div>
+                        <p>Marc handles ${marcPercent}% of all responses</p>
+                        <p><strong>Risk:</strong> If Marc unavailable, response coverage drops significantly</p>
+                    </div>
+                `;
+            }
+
+            // Insight 3: Current open tickets
+            const openTickets = data.filter(t => t.status === 'open');
+            openTickets.forEach(ticket => {
+                const age = Math.floor((Date.now() - new Date(ticket.created_at).getTime()) / 60000);
+                insights.innerHTML += `
+                    <div class="insight-card">
+                        <div class="insight-title">🚨 Active Emergency</div>
+                        <p><strong>${ticket.ticket_reference || 'TKT' + ticket.id}</strong> - ${ticket.lift_name}</p>
+                        <p>Open for ${age} minutes | ${ticket.reminder_count} reminders sent</p>
+                    </div>
+                `;
+            });
+
+            if (insights.innerHTML === '') {
+                insights.innerHTML = '<div style="text-align: center; padding: 20px; color: #10b981;">✅ No critical issues detected</div>';
+            }
+        }
+
+        async function loadRecommendations() {
+            const recommendations = document.getElementById('recommendations');
+            recommendations.innerHTML = `
+                <div class="recommendation-card">
+                    <div class="recommendation-title">📚 Train Underperformers</div>
+                    <p>Provide training to contacts with <70% response rate</p>
+                </div>
+                <div class="recommendation-card">
+                    <div class="recommendation-title">🔧 Optimize Reminder Timing</div>
+                    <p>Test 5-minute intervals vs current 1-minute for better cost efficiency</p>
+                </div>
+                <div class="recommendation-card">
+                    <div class="recommendation-title">🎨 Improve Entrapment UX</div>
+                    <p>Change YES button to "✅ PROVIDER NOTIFIED" for clarity</p>
+                </div>
+            `;
+        }
+
+        async function loadLiveActivity() {
+            const data = await apiCall('/events/recent?limit=10');
+            const events = data.events;
+
+            const activity = document.getElementById('liveActivity');
+            activity.innerHTML = '';
+
+            if (events.length === 0) {
+                activity.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No recent activity</div>';
+                return;
+            }
+
+            events.forEach(event => {
+                const time = new Date(event.created_at).toLocaleTimeString();
+                const typeEmoji = {
+                    'ticket_created': '🎫',
+                    'ticket_closed': '✅',
+                    'button_click_received': '🔘',
+                    'wa_template_ok': '📤',
+                    'sms_received': '📥',
+                    'ai_api_access': '🤖'
+                };
+
+                const emoji = typeEmoji[event.event_type] || '📍';
+                
+                activity.innerHTML += `
+                    <div style="padding: 10px; margin: 5px 0; background: rgba(102, 126, 234, 0.05); border-radius: 8px; font-size: 0.9em;">
+                        <strong>${emoji} ${time}</strong><br>
+                        ${event.event_type.replace(/_/g, ' ')}
+                    </div>
+                `;
+            });
+        }
+
+        async function loadAllData() {
+            try {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.getElementById('dashboard').style.display = 'none';
+
+                await Promise.all([
+                    loadMetrics(),
+                    loadTickets(),
+                    loadPerformance(),
+                    loadButtonChart(),
+                    loadTicketTimeline(),
+                    loadInsights(),
+                    loadRecommendations(),
+                    loadLiveActivity()
+                ]);
+
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('dashboard').style.display = 'block';
+
+                // Auto-refresh live activity every 10 seconds
+                setTimeout(() => loadLiveActivity(), 10000);
+            } catch (error) {
+                document.getElementById('loadingIndicator').innerHTML = `
+                    <div class="error">
+                        <strong>❌ Error loading data</strong><br>
+                        ${error.message}<br><br>
+                        <button class="refresh-btn" onclick="loadAllData()">Retry</button>
+                    </div>
+                `;
+            }
+        }
+
+        // Load data on page load
+        loadAllData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadAllData, 30000);
+    </script>
+</body>
+</html>
+

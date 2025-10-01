@@ -1,0 +1,72 @@
+INTEGRATION INSTRUCTIONS FOR CONTACT PERFORMANCE ROUTES
+
+================================================================================
+NEW FILE CREATED: src/routes/contact-performance.js
+================================================================================
+
+This file provides 3 new endpoints for contact performance analysis:
+
+1. GET /api/contact-performance/performance
+   - Shows all contacts with response rates, average times, etc.
+   - Parameters: since (optional), lift_id (optional)
+
+2. GET /api/contact-performance/:contactId/history
+   - Detailed history for a specific contact
+   - Shows all tickets they could have responded to vs actually did
+
+3. GET /api/contact-performance/leaderboard
+   - Top performers ranked by response count and speed
+   - Parameters: since (optional), top (default: 10)
+
+4. GET /api/contact-performance/non-responders
+   - Contacts who haven't responded despite receiving tickets
+   - Parameters: since (optional), min_tickets (default: 3)
+
+
+================================================================================
+TO INTEGRATE: Add to src/server.js
+================================================================================
+
+STEP 1: Add import (after line 16)
+const contactPerformanceRoutes = require('./routes/contact-performance');
+
+STEP 2: Mount routes (after line 88, after other app.use statements)
+app.use('/api/contact-performance', contactPerformanceRoutes);
+
+
+================================================================================
+TESTING THE NEW ENDPOINTS
+================================================================================
+
+Test Contact Performance:
+curl -H "X-AI-Token: YOUR_TOKEN" "https://gplifts.woosh.ai/api/contact-performance/performance"
+
+Test Leaderboard:
+curl -H "X-AI-Token: YOUR_TOKEN" "https://gplifts.woosh.ai/api/contact-performance/leaderboard?top=5"
+
+Test Non-Responders:
+curl -H "X-AI-Token: YOUR_TOKEN" "https://gplifts.woosh.ai/api/contact-performance/non-responders"
+
+Test Specific Contact History:
+curl -H "X-AI-Token: YOUR_TOKEN" "https://gplifts.woosh.ai/api/contact-performance/f2c41e5f-9a96-4a45-aa6a-a7d3f4fce95b/history"
+
+
+================================================================================
+WHAT THIS PROVIDES
+================================================================================
+
+For each contact you'll see:
+- Total tickets assigned to their lifts
+- How many they actually responded to
+- Response rate percentage
+- Average response time
+- Fastest and slowest responses
+- Last activity timestamp
+- Number of lifts they're responsible for
+
+This makes it easy to identify:
+- Top performers (fast responders)
+- Underperformers (low response rates)
+- Non-responders (zero responses despite tickets)
+- Training needs (slow but responsive vs fast responders)
+
