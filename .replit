@@ -17,10 +17,6 @@ externalPort = 5000
 localPort = 8080
 externalPort = 80
 
-[[ports]]
-localPort = 37581
-externalPort = 3000
-
 [env]
 PATH = "/home/runner/$REPL_SLUG/.config/npm/node_modules/.bin:$PATH"
 
