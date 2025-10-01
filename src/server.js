@@ -23,6 +23,54 @@ const BRIDGE_TEMPLATE_LANG = (process.env.BRIDGE_TEMPLATE_LANG || "en").trim();
 const REGISTRY_PATH = process.env.REGISTRY_PATH || "./data/registry.csv";
 const HMAC_SECRET = process.env.SMSPORTAL_HMAC_SECRET || "";
 
+// ============================================================================
+// APPLICATION LOG CAPTURE SYSTEM
+// ============================================================================
+// Captures console.log/error/warn output for AI troubleshooting access
+const LOG_BUFFER = [];
+const MAX_LOG_BUFFER_SIZE = 1000;
+
+function captureLog(level, ...args) {
+  const message = args.map(arg => 
+    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+  ).join(' ');
+  
+  LOG_BUFFER.push({
+    timestamp: new Date().toISOString(),
+    level: level,
+    message: message
+  });
+  
+  // Keep buffer size manageable
+  if (LOG_BUFFER.length > MAX_LOG_BUFFER_SIZE) {
+    LOG_BUFFER.shift();
+  }
+}
+
+// Store original console methods
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+// Wrap console methods to capture logs
+console.log = function(...args) {
+  captureLog('info', ...args);
+  originalLog.apply(console, args);
+};
+
+console.error = function(...args) {
+  captureLog('error', ...args);
+  originalError.apply(console, args);
+};
+
+console.warn = function(...args) {
+  captureLog('warn', ...args);
+  originalWarn.apply(console, args);
+};
+
+// Make LOG_BUFFER accessible globally for troubleshoot routes
+global.LOG_BUFFER = LOG_BUFFER;
+
 // Log template config on startup
 console.log('[startup] Template config:', {
   BRIDGE_TEMPLATE_NAME,
