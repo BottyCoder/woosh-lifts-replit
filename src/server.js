@@ -885,7 +885,7 @@ async function checkPendingReminders() {
        JOIN contacts c ON t.responded_by = c.id
        WHERE t.status = 'open'
          AND t.button_clicked = 'entrapment_awaiting_confirmation'
-         AND t.reminder_count < 3
+         AND t.reminder_count <= 3
          AND t.last_reminder_at < NOW() - INTERVAL '1 minute'`
     );
     
@@ -893,8 +893,8 @@ async function checkPendingReminders() {
       const newCount = (ticket.reminder_count || 0) + 1;
       console.log(`[reminder] Processing ticket ${ticket.id}, reminder ${newCount}/3`);
       
-      if (newCount >= 3) {
-        // Final reminder failed - close ticket with note
+      if (newCount > 3) {
+        // All 3 reminders sent with no response - close ticket with note
         await query(
           `UPDATE tickets 
            SET status = 'closed',
