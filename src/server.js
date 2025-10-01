@@ -1281,7 +1281,7 @@ async function processInitialAlertReminder(ticket) {
            resolved_at = now(),
            closure_note = 'Auto-closed: No response to emergency alert after 3 reminders',
            updated_at = now()
-       WHERE id = $2`,
+       WHERE id = $1`,
       [ticket.id]
     );
     
@@ -1452,7 +1452,7 @@ async function checkPendingReminders() {
                resolved_at = now(),
                closure_note = 'Auto-closed: Service provider notification not confirmed after 3 reminders',
                updated_at = now()
-           WHERE id = $2`,
+           WHERE id = $1`,
           [ticket.id]
         );
         
