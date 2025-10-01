@@ -343,6 +343,7 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
     const tplName = BRIDGE_TEMPLATE_NAME;
     const tplLang = BRIDGE_TEMPLATE_LANG;
     const results = [];
+    let firstMessageId = null;
 
     for (const contact of contacts) {
       const to = contact.primary_msisdn;
@@ -364,12 +365,20 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
             paramText: locationText
           });
           console.log(`[sms/direct] Template sent successfully to ${displayName}:`, r);
+          
+          // Capture first message ID for ticket tracking (wa_id from Woosh Bridge)
+          if (!firstMessageId && (r?.wa_id || r?.id)) {
+            firstMessageId = r.wa_id || r.id;
+            console.log(`[sms/direct] Captured message ID for ticket tracking: ${firstMessageId}`);
+          }
+          
           logEvent('wa_template_ok', { 
             sms_id: smsId, 
             contact_id: contact.id,
             contact_name: displayName,
             to: plus(to), 
-            provider_id: r?.id || null, 
+            provider_id: r?.id || null,
+            wa_id: r?.wa_id || null,
             templateName: tplName, 
             lang: tplLang 
           });
@@ -391,6 +400,15 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
       } else {
         console.log('[sms/direct] No template name configured, skipping template');
       }
+    }
+    
+    // Update ticket with message ID for button click tracking
+    if (firstMessageId) {
+      await query(
+        `UPDATE tickets SET message_id = $1 WHERE id = $2`,
+        [firstMessageId, ticket.id]
+      );
+      console.log(`[sms/direct] Ticket ${ticket.id} updated with message_id: ${firstMessageId}`);
     }
 
     const successCount = results.filter(r => r.status === 'sent').length;
@@ -512,6 +530,7 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
     const tplName = BRIDGE_TEMPLATE_NAME;
     const tplLang = BRIDGE_TEMPLATE_LANG;
     const results = [];
+    let firstMessageId = null;
 
     for (const contact of contacts) {
       const to = contact.primary_msisdn;
@@ -533,12 +552,20 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
             paramText: locationText
           });
           console.log(`[inbound] Template sent successfully to ${displayName}:`, r);
+          
+          // Capture first message ID for ticket tracking (wa_id from Woosh Bridge)
+          if (!firstMessageId && (r?.wa_id || r?.id)) {
+            firstMessageId = r.wa_id || r.id;
+            console.log(`[inbound] Captured message ID for ticket tracking: ${firstMessageId}`);
+          }
+          
           logEvent('wa_template_ok', { 
             sms_id: smsId, 
             contact_id: contact.id,
             contact_name: displayName,
             to: plus(to), 
-            provider_id: r?.id || null, 
+            provider_id: r?.id || null,
+            wa_id: r?.wa_id || null,
             templateName: tplName, 
             lang: tplLang 
           });
@@ -560,6 +587,15 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
       } else {
         console.log('[inbound] No template name configured, skipping template');
       }
+    }
+    
+    // Update ticket with message ID for button click tracking
+    if (firstMessageId) {
+      await query(
+        `UPDATE tickets SET message_id = $1 WHERE id = $2`,
+        [firstMessageId, ticket.id]
+      );
+      console.log(`[inbound] Ticket ${ticket.id} updated with message_id: ${firstMessageId}`);
     }
 
     const successCount = results.filter(r => r.status === 'sent').length;
@@ -731,11 +767,14 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       return res.status(200).json({ status: 'ok', processed: false });
     }
     
+    // Extract context.id (original message ID) for precise ticket matching
+    const contextId = message?.context?.id;
+    
     // Log button click
     await query(
       `INSERT INTO event_log (event_type, metadata, created_at)
        VALUES ($1, $2, NOW())`,
-      ['button_click_received', JSON.stringify({ from: fromNumber, payload: buttonPayload, text: buttonText })]
+      ['button_click_received', JSON.stringify({ from: fromNumber, payload: buttonPayload, text: buttonText, contextId })]
     );
     
     // Find contact by WhatsApp number
@@ -746,23 +785,56 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     if (contactResult.rows.length === 0) {
       console.log('[webhook/whatsapp] Contact not found:', fromNumber);
-      await logEvent('button_click_contact_not_found', { from: fromNumber, payload: buttonPayload });
+      await logEvent('button_click_contact_not_found', { from: fromNumber, payload: buttonPayload, contextId });
       return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
     }
     
     const contact = contactResult.rows[0];
     
-    // Find most recent open ticket (assume it's the one they're responding to)
-    const ticketResult = await query(
-      `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
-       FROM tickets t
-       JOIN lifts l ON t.lift_id = l.id
-       JOIN lift_contacts lc ON t.lift_id = lc.lift_id
-       WHERE lc.contact_id = $1 AND t.status = 'open'
-       ORDER BY t.created_at DESC
-       LIMIT 1`,
-      [contact.id]
-    );
+    // Match button click to specific ticket using context.id (supports multiple simultaneous emergencies)
+    let ticketResult;
+    if (contextId) {
+      // Precise matching: Use context.id to find the exact message/ticket
+      console.log('[webhook/whatsapp] Using context.id for precise ticket matching:', contextId);
+      ticketResult = await query(
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         WHERE t.message_id = $1 AND t.status = 'open'`,
+        [contextId]
+      );
+      
+      if (ticketResult.rows.length === 0) {
+        console.log('[webhook/whatsapp] No ticket found with message_id:', contextId);
+        console.log('[webhook/whatsapp] Falling back to recent ticket lookup for contact:', contact.id);
+        // Fallback to old behavior if message_id not found
+        ticketResult = await query(
+          `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+           FROM tickets t
+           JOIN lifts l ON t.lift_id = l.id
+           JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+           WHERE lc.contact_id = $1 AND t.status = 'open'
+           ORDER BY t.created_at DESC
+           LIMIT 1`,
+          [contact.id]
+        );
+      } else {
+        console.log('[webhook/whatsapp] ✅ Matched button click to ticket via context.id');
+      }
+    } else {
+      // Fallback: No context.id (shouldn't happen with Meta webhooks, but handle it)
+      console.log('[webhook/whatsapp] WARNING: No context.id in webhook - using fallback matching');
+      ticketResult = await query(
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+         WHERE lc.contact_id = $1 AND t.status = 'open'
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [contact.id]
+      );
+    }
     
     if (ticketResult.rows.length === 0) {
       console.log('[webhook/whatsapp] No open tickets found for contact:', contact.id);
@@ -770,7 +842,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     }
     
     const ticket = ticketResult.rows[0];
-    console.log('[webhook/whatsapp] Found ticket:', ticket.id);
+    console.log('[webhook/whatsapp] Found ticket:', ticket.id, 'Ref:', ticket.ticket_reference || 'N/A');
     
     // Handle button click based on payload (preferred) or text (fallback)
     const buttonIdentifier = (buttonPayload || buttonText || '').toLowerCase();

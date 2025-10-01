@@ -1,0 +1,384 @@
+WOOSH SUPPORT - RESPONSE TO GROWTHPOINT BUTTON TRACKING QUESTION
+
+Date: October 1, 2025
+Re: Interactive Button Click Tracking in WhatsApp Webhooks
+
+================================================================================
+QUICK ANSWER
+================================================================================
+
+YES - Meta includes complete tracking information for button clicks!
+
+The key field is: context.id
+
+This field contains the ID of the original message, allowing you to track which 
+specific message instance the user clicked on - even when you send multiple 
+messages with identical buttons to the same contact.
+
+================================================================================
+DETAILED ANSWERS TO YOUR QUESTIONS
+================================================================================
+
+Question 1: Message Context ID
+-------------------------------
+YES - The button click webhook includes context.id which contains the original 
+message ID. This tells you exactly which message the button was clicked on.
+
+Path in webhook payload:
+entry[0].changes[0].value.messages[0].context.id
+
+
+Question 2: Payload Structure
+------------------------------
+When a button is clicked, the webhook payload at entry[0].changes[0].value.messages[0] 
+contains these fields:
+
+Field: from
+Value: User's WhatsApp phone number (e.g., "27824537125")
+
+Field: id
+Value: Unique ID for this button click event (e.g., "wamid.HBgL...")
+
+Field: timestamp
+Value: Unix timestamp when button was clicked (e.g., "1696166400")
+
+Field: type
+Value: Always "interactive" for button clicks
+
+Field: interactive.type
+Value: "button_reply" for button clicks
+
+Field: interactive.button_reply.id
+Value: Your custom button identifier (e.g., "lift_emergency_001" or "opt_test")
+
+Field: interactive.button_reply.title
+Value: The button text shown to user (e.g., "Entrapment" or "Test")
+
+Field: context.id
+Value: ID of the original message that contained the button (KEY FIELD)
+
+Field: context.from
+Value: Your business phone number
+
+
+Question 3: Tracking Multiple Messages
+---------------------------------------
+When you send the same template multiple times (e.g., same "Test", "Maintenance", 
+"Entrapment" buttons for different lift emergencies), you can determine which 
+specific instance they clicked by:
+
+Step 1: When you send a message via Woosh Bridge, save the wa_id from the response
+Step 2: Store this wa_id with your ticket/emergency details in your database
+Step 3: When button click webhook arrives, extract context.id
+Step 4: Look up context.id in your database to find the associated ticket/emergency
+
+This allows you to correctly match button clicks to specific emergencies even 
+when a contact receives multiple alerts simultaneously.
+
+================================================================================
+SAMPLE WEBHOOK PAYLOAD
+================================================================================
+
+Here's a complete example of what you receive when a user clicks a button:
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "27123456789",
+              "phone_number_id": "753321277868753"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "John Smith"
+                },
+                "wa_id": "27824537125"
+              }
+            ],
+            "messages": [
+              {
+                "from": "27824537125",
+                "id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBI5RTNBQTA2RTMzRjdGMDc3NTEA",
+                "timestamp": "1696166400",
+                "type": "interactive",
+                "interactive": {
+                  "type": "button_reply",
+                  "button_reply": {
+                    "id": "lift_emergency_001",
+                    "title": "Entrapment"
+                  }
+                },
+                "context": {
+                  "from": "27123456789",
+                  "id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgASGBQzQTU2NzlCQzA3QkFCNzdCRjgA"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}
+
+Note the "context" object - the "id" field is your link back to the original 
+message. This is present for ALL button click webhooks from both template 
+messages and session messages.
+
+================================================================================
+IMPLEMENTATION EXAMPLE - YOUR USE CASE
+================================================================================
+
+Your Scenario:
+- Contact receives multiple emergency alerts for different lifts simultaneously
+- Each alert has the same buttons: "Test", "Maintenance", "Entrapment"
+- You need to know which lift/ticket they're responding to
+
+Solution Flow:
+
+Step 1 - Send Alert for LIFT-A
+-------------------------------
+POST https://wa.woosh.ai/api/messages/send
+Header: X-Api-Key: YOUR_KEY
+Body: {
+  "to": "27824537125",
+  "type": "interactive",
+  "interactive": {
+    "type": "button",
+    "body": {"text": "Emergency Alert: LIFT-A - Floor 3"},
+    "action": {
+      "buttons": [
+        {"type": "reply", "reply": {"id": "lifta_test", "title": "Test"}},
+        {"type": "reply", "reply": {"id": "lifta_maint", "title": "Maintenance"}},
+        {"type": "reply", "reply": {"id": "lifta_entrap", "title": "Entrapment"}}
+      ]
+    }
+  }
+}
+
+Response: {"ok": true, "wa_id": "wamid.ABC123...", "accepted": true}
+
+Store in your database:
+ticket_id: EMG-2024-001
+lift_id: LIFT-A
+floor: 3
+message_id: wamid.ABC123...
+sent_at: 2024-10-01 10:30:00
+status: sent
+
+
+Step 2 - Send Alert for LIFT-B
+-------------------------------
+POST https://wa.woosh.ai/api/messages/send
+(same structure, different lift)
+
+Response: {"ok": true, "wa_id": "wamid.XYZ789...", "accepted": true}
+
+Store in your database:
+ticket_id: EMG-2024-002
+lift_id: LIFT-B
+floor: 7
+message_id: wamid.XYZ789...
+sent_at: 2024-10-01 10:31:00
+status: sent
+
+
+Step 3 - User Clicks Button on LIFT-B Message
+----------------------------------------------
+Webhook arrives at your endpoint with:
+
+context.id = "wamid.XYZ789..."
+button_reply.id = "liftb_entrap"
+button_reply.title = "Entrapment"
+from = "27824537125"
+
+
+Step 4 - Match to Ticket
+-------------------------
+Look up in database: WHERE message_id = "wamid.XYZ789..."
+
+Result:
+- Ticket: EMG-2024-002
+- Lift: LIFT-B
+- Floor: 7
+- Response: Entrapment
+- Contact: 27824537125
+
+You now know with certainty that the user clicked "Entrapment" for the LIFT-B 
+emergency on Floor 7, not the LIFT-A emergency.
+
+================================================================================
+DATABASE SCHEMA RECOMMENDATION
+================================================================================
+
+Table: emergency_messages
+
+Columns:
+- id (primary key, auto-increment)
+- message_id (varchar 255, unique, indexed) - The wa_id from send response
+- ticket_id (varchar 100, indexed)
+- lift_id (varchar 100)
+- floor (integer)
+- contact_phone (varchar 50)
+- sent_at (timestamp)
+- responded_at (timestamp, nullable)
+- response_button_id (varchar 100, nullable)
+- response_button_title (varchar 100, nullable)
+- status (varchar 50) - 'sent', 'responded', 'expired'
+
+Key indexes:
+- message_id (for fast webhook lookup)
+- ticket_id (for ticket system queries)
+- contact_phone (for user history)
+
+================================================================================
+IMPLEMENTATION PSEUDOCODE
+================================================================================
+
+When Sending Emergency Alert:
+------------------------------
+1. Build interactive message payload
+2. POST to https://wa.woosh.ai/api/messages/send
+3. Get wa_id from response
+4. INSERT into database (message_id=wa_id, ticket_id, lift_id, etc.)
+5. Return success to caller
+
+
+When Receiving Button Click Webhook:
+-------------------------------------
+1. Extract message = webhook.entry[0].changes[0].value.messages[0]
+2. Check if message.type == "interactive"
+3. Check if message.interactive.type == "button_reply"
+4. Get originalMessageId = message.context.id
+5. Get buttonId = message.interactive.button_reply.id
+6. Get buttonTitle = message.interactive.button_reply.title
+7. Get userPhone = message.from
+8. SELECT * FROM emergency_messages WHERE message_id = originalMessageId
+9. UPDATE emergency_messages SET responded_at=now(), response_button_title=buttonTitle, status='responded'
+10. Update your ticketing system with the response
+11. Trigger appropriate workflows (dispatch team, log audit trail, etc.)
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+Context Field Availability:
+---------------------------
+- The context.id field is included for BOTH template messages AND session messages
+- It is a standard Meta feature, not specific to Woosh Bridge
+- It will always be present when a user clicks a button in reply to a message
+- This is documented in Meta's official WhatsApp Cloud API documentation
+
+Multiple Button Types:
+----------------------
+The context.id field is available for:
+- Interactive buttons (your use case)
+- Interactive lists
+- Quick reply buttons
+
+Timing:
+-------
+- context.id refers to the message sent by YOUR business
+- It does NOT refer to any user-sent message
+- It uniquely identifies which of YOUR messages they're responding to
+
+Woosh Bridge Enhancement:
+-------------------------
+We've just enhanced Woosh Bridge to automatically extract context.id and make 
+it available as "contextId" in the normalized webhook format. This is now live 
+in production.
+
+================================================================================
+TESTING YOUR IMPLEMENTATION
+================================================================================
+
+Test Scenario:
+--------------
+1. Send 3 emergency alerts to your test number (different lifts)
+2. Wait for all 3 to arrive on WhatsApp
+3. Click button on the MIDDLE message
+4. Verify your webhook handler correctly identifies the middle ticket/lift
+5. Click buttons on the other messages
+6. Verify each is correctly matched
+
+Expected Result:
+----------------
+Each button click should be matched to the correct ticket/lift, regardless of 
+which order you click them or how many identical button sets exist.
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+We've created comprehensive documentation for you:
+
+File: docs/INTERACTIVE-BUTTON-WEBHOOKS.md
+Complete guide with detailed examples, full payload structure, implementation 
+guide, and code samples.
+
+File: docs/BUTTON-TRACKING-QUICK-REF.md
+One-page quick reference with key fields and testing commands.
+
+File: docs/examples/track-button-clicks.js
+Working example code demonstrating the complete flow. Can run in simulation 
+mode or send real messages. Includes:
+- Multiple emergency alert simulation
+- Message ID storage
+- Button click processing
+- Matching logic
+- Detailed logging
+
+To run the example:
+node docs/examples/track-button-clicks.js
+
+(Set BRIDGE_API_KEY environment variable to send real messages)
+
+================================================================================
+SUPPORT
+================================================================================
+
+If you need assistance with:
+- Implementation in your system
+- Database schema design
+- Webhook endpoint setup
+- Testing and validation
+- Edge cases or special scenarios
+
+Please reach out to Woosh Support with:
+- Your specific use case details
+- Sample webhook payloads (if behavior differs from documented)
+- Any integration challenges
+
+We're here to ensure your emergency alert system works perfectly.
+
+================================================================================
+SUMMARY
+================================================================================
+
+YES to all your questions:
+
+1. Button clicks include original message ID via context.id
+2. Full payload structure documented above with all available fields
+3. You can track multiple identical button sets by storing wa_id on send and 
+   matching against context.id on webhook
+
+The context.id field is your key to reliable tracking. Store the wa_id when 
+you send messages, and match it against context.id when you receive button 
+clicks. This works perfectly for your scenario of multiple simultaneous 
+emergency alerts with identical buttons.
+
+Implementation is straightforward and the feature is production-ready.
+
+================================================================================
+
+Woosh Support Team
+October 1, 2025
+
