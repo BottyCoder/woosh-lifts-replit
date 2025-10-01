@@ -631,7 +631,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     // Find most recent open ticket (assume it's the one they're responding to)
     const ticketResult = await query(
-      `SELECT t.*, l.building || ' - ' || l.lift_identifier as lift_name
+      `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
        FROM tickets t
        JOIN lifts l ON t.lift_id = l.id
        JOIN lift_contacts lc ON t.lift_id = lc.lift_id
