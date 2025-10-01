@@ -177,10 +177,10 @@ async function loadDashboard() {
         document.getElementById('stat-active-tickets').textContent = activeTicketsCount;
         document.getElementById('stat-messages-today').textContent = messagesToday;
 
-        // Get recent open tickets for display (limit 5)
-        const recentTickets = (allTickets.data || []).filter(t => 
-            ['open', 'entrapment_awaiting_confirmation'].includes(t.status)
-        ).slice(0, 5);
+        // Get recent tickets for display (limit 5, all statuses, sorted by created date)
+        const recentTickets = (allTickets.data || [])
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 5);
         
         renderRecentTickets(recentTickets);
         
@@ -343,19 +343,39 @@ async function loadLifts() {
     container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading lifts...</p></div>';
 
     try {
-        const response = await authFetch(`${BASE_URL}/admin/lifts`);
-        const result = await response.json();
+        const [liftsResponse, contactsResponse] = await Promise.all([
+            authFetch(`${BASE_URL}/admin/lifts`),
+            authFetch(`${BASE_URL}/admin/contacts`)
+        ]);
 
-        if (!result.ok) {
-            throw new Error(result.error?.message || 'Failed to load lifts');
+        const liftsResult = await liftsResponse.json();
+        const contactsResult = await contactsResponse.json();
+
+        if (!liftsResult.ok) {
+            throw new Error(liftsResult.error?.message || 'Failed to load lifts');
         }
 
-        const lifts = result.data || [];
+        const lifts = liftsResult.data || [];
+        const allContacts = contactsResult.data || [];
 
         if (lifts.length === 0) {
             container.innerHTML = '<div class="empty-state"><h3>No lifts found</h3><p>No lifts registered in the system.</p></div>';
             return;
         }
+
+        // Fetch linked contacts for all lifts
+        const liftContactsPromises = lifts.map(lift => 
+            authFetch(`${BASE_URL}/admin/lifts/${lift.id}/contacts`)
+                .then(res => res.json())
+                .then(data => ({ liftId: lift.id, contacts: data.data || [] }))
+                .catch(() => ({ liftId: lift.id, contacts: [] }))
+        );
+
+        const liftContactsData = await Promise.all(liftContactsPromises);
+        const liftContactsMap = {};
+        liftContactsData.forEach(lc => {
+            liftContactsMap[lc.liftId] = lc.contacts;
+        });
 
         container.innerHTML = `
             <table class="table">
@@ -365,26 +385,35 @@ async function loadLifts() {
                         <th>Site Name</th>
                         <th>Building</th>
                         <th>MSISDN</th>
+                        <th>Linked Contacts</th>
                         <th>Notes</th>
                         <th>Created</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${lifts.map(lift => `
+                    ${lifts.map(lift => {
+                        const linkedContacts = liftContactsMap[lift.id] || [];
+                        const contactsDisplay = linkedContacts.length > 0 
+                            ? linkedContacts.map(c => escapeHtml(c.display_name)).join(', ')
+                            : '<span style="color: #94a3b8;">None</span>';
+                        
+                        return `
                         <tr>
                             <td><strong>#${lift.id}</strong></td>
                             <td>${escapeHtml(lift.site_name || '-')}</td>
                             <td>${escapeHtml(lift.building || '-')}</td>
                             <td>${escapeHtml(lift.msisdn)}</td>
-                            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(lift.notes || '-')}</td>
+                            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${contactsDisplay}</td>
+                            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(lift.notes || '-')}</td>
                             <td>${formatDateTime(lift.created_at)}</td>
                             <td>
                                 <button class="btn-small" onclick="editLift(${lift.id})">Edit</button>
                                 <button class="btn-small btn-danger" onclick="deleteLift(${lift.id})">Delete</button>
                             </td>
                         </tr>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </tbody>
             </table>
         `;
