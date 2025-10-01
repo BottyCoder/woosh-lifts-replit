@@ -25,6 +25,15 @@ Preferred communication style: Simple, everyday language.
   - Outbound text: Confirmation and escalation messages logged via notifyAllContactsForLift
   - All messages include ticket_id in meta for ticket correlation
   - Messages table has wa_id column (indexed) for delivery/read receipt tracking via status webhook
+- **Implemented AI Troubleshooting API** (`/api/troubleshoot`): Comprehensive read-only debugging endpoints with dual-token authentication (AI_ASSISTANT_TOKEN and ADMIN_TOKEN):
+  - `/messages` endpoint with filtering by lift_id, ticket_id, direction, type, status, timestamp - returns full message history with wa_id, delivery status, and lift_name for complete communication audit trail
+  - `/tickets`, `/lifts`, `/contacts` endpoints with pagination, search, and detailed views
+  - `/diagnostics` endpoint for system health, counts, environment check, and recent activity
+  - `/logs` and `/event-types` endpoints for event log analysis
+  - Read-only enforcement via middleware (blocks POST/PUT/DELETE for AI tokens)
+  - Rate limiting: 30 requests/minute for AI assistants
+  - All AI access logged to event_log table for audit trail
+  - Secured `/api/inbound/latest` endpoint with same authentication
 
 ## System Architecture
 
@@ -41,10 +50,14 @@ Preferred communication style: Simple, everyday language.
 - `/send` - Outbound message sending
 - `/webhooks/whatsapp` - WhatsApp event callbacks from Woosh Bridge
 - `/api/status/webhook` - WhatsApp message delivery/read receipt status updates
+- `/api/troubleshoot/*` - AI assistant troubleshooting API (read-only, authenticated)
 
 **Authentication Strategy**:
 - Admin routes protected by token-based authentication (`X-Admin-Token` or `Authorization: Bearer`)
 - Admin token configured via `ADMIN_TOKEN` environment variable
+- AI troubleshooting routes accept both `AI_ASSISTANT_TOKEN` and `ADMIN_TOKEN` via `X-AI-Token`, `X-Admin-Token`, or `Authorization: Bearer` headers
+- AI tokens enforce read-only access (GET only) with rate limiting (30 req/min)
+- All AI access logged to event_log for audit trail
 - SMS webhooks use HMAC signature verification (`SMSPORTAL_HMAC_SECRET`)
 - WhatsApp webhooks currently use IP allowlisting (no header authentication from Woosh Bridge)
 
