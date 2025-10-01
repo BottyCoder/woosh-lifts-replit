@@ -235,10 +235,16 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
 // Direct SMS route
 app.post('/sms/direct', jsonParser, async (req, res) => {
   try {
-    console.log('[sms/direct] Incoming SMS:', JSON.stringify(req.body));
+    console.log('[sms/direct] ===== INCOMING SMS WEBHOOK =====');
+    console.log('[sms/direct] Full payload:', JSON.stringify(req.body, null, 2));
+    console.log('[sms/direct] Content-Type:', req.get('content-type'));
+    console.log('[sms/direct] Headers:', JSON.stringify(req.headers));
+    
     const { smsId, toDigits, incoming } = normalize(req.body || {});
+    console.log(`[sms/direct] Normalized - SMS ID: ${smsId}, Phone: ${toDigits}, Message: ${incoming}`);
+    
     if (!toDigits || !incoming) {
-      console.log('[sms/direct] Bad request - missing phone or text');
+      console.log('[sms/direct] ERROR: Bad request - missing phone or text');
       return res.status(400).json({ ok: false, error: 'bad_request', detail: 'missing phone/text' });
     }
     logEvent('sms_received', { sms_id: smsId, lift_msisdn: plus(toDigits), text_len: incoming.length, direct: true });
@@ -351,6 +357,9 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
       failed: results.length - successCount 
     });
 
+    console.log(`[sms/direct] SUCCESS: Ticket ${ticket.id} created, ${successCount}/${results.length} contacts notified`);
+    console.log('[sms/direct] ===== END SMS WEBHOOK =====');
+
     return res.status(202).json({ 
       ok: true, 
       id: smsId, 
@@ -360,6 +369,7 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
       results 
     });
   } catch (err) {
+    console.error('[sms/direct] EXCEPTION:', err);
     logEvent('handler_error', { error: String(err && err.stack || err) });
     return res.status(500).json({ ok: false, error: 'internal' });
   }

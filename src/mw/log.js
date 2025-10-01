@@ -4,6 +4,14 @@ function requestLogger(req, res, next) {
   const start = Date.now();
   const timestamp = new Date().toISOString();
   
+  // Log incoming request immediately
+  console.log(`[HTTP] ${req.method} ${req.path} from ${req.ip}`);
+  
+  // Log headers for debugging
+  if (req.path.includes('/sms') || req.path.includes('/webhook')) {
+    console.log(`[HTTP] Headers:`, JSON.stringify(req.headers));
+  }
+  
   // Log when response finishes
   res.on('finish', () => {
     const duration = Date.now() - start;
