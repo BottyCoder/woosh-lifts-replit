@@ -197,25 +197,19 @@ function normalize(body = {}) {
 
 // Template sender
 async function sendTemplateRaw({ to, name, langCode, paramText }) {
-  const template = {
-    name,
-    language: { code: langCode }
-  };
-  
-  // Only add components if paramText is provided
-  if (paramText) {
-    template.components = [
-      {
-        type: "body",
-        parameters: [{ type: "text", text: paramText }]
-      }
-    ];
-  }
-  
   const payload = {
     to,
     type: "template",
-    template
+    template: {
+      name,
+      language: { code: langCode },
+      components: [
+        {
+          type: "body",
+          parameters: [{ type: "text", text: paramText }]
+        }
+      ]
+    }
   };
   const resp = await fetch(`${BRIDGE_BASE_URL.replace(/\/+$/,'')}/v1/send`, {
     method: "POST",
@@ -315,8 +309,8 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
           const r = await sendTemplateRaw({
             to,
             name: tplName,
-            langCode: tplLang
-            // Note: growthpoint_lift_emergency template has no parameters
+            langCode: tplLang,
+            paramText: `${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`
           });
           console.log(`[sms/direct] Template sent successfully to ${displayName}:`, r);
           logEvent('wa_template_ok', { 
@@ -470,8 +464,8 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
           const r = await sendTemplateRaw({
             to,
             name: tplName,
-            langCode: tplLang
-            // Note: growthpoint_lift_emergency template has no parameters
+            langCode: tplLang,
+            paramText: `${lift.site_name || 'Site'} - ${lift.building || 'Lift'}`
           });
           console.log(`[inbound] Template sent successfully to ${displayName}:`, r);
           logEvent('wa_template_ok', { 
