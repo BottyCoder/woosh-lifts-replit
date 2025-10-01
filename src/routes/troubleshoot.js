@@ -456,127 +456,6 @@ router.get('/contacts/:id', async (req, res) => {
   }
 });
 
-// Get message history with filtering (NEW - Critical for debugging communication)
-router.get('/messages', async (req, res) => {
-  try {
-    const { 
-      lift_id, 
-      ticket_id, 
-      direction, 
-      type, 
-      status,
-      since,
-      limit = 100, 
-      offset = 0 
-    } = req.query;
-    
-    let sql = `
-      SELECT 
-        m.*,
-        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
-      FROM messages m
-      LEFT JOIN lifts l ON m.lift_id = l.id
-      WHERE 1=1
-    `;
-    
-    const params = [];
-    let paramIndex = 1;
-    
-    if (lift_id) {
-      sql += ` AND m.lift_id = $${paramIndex++}`;
-      params.push(parseInt(lift_id));
-    }
-    
-    if (ticket_id) {
-      sql += ` AND m.meta->>'ticket_id' = $${paramIndex++}`;
-      params.push(ticket_id);
-    }
-    
-    if (direction) {
-      sql += ` AND m.direction = $${paramIndex++}`;
-      params.push(direction);
-    }
-    
-    if (type) {
-      sql += ` AND m.type = $${paramIndex++}`;
-      params.push(type);
-    }
-    
-    if (status) {
-      sql += ` AND m.status = $${paramIndex++}`;
-      params.push(status);
-    }
-    
-    if (since) {
-      sql += ` AND m.created_at >= $${paramIndex++}`;
-      params.push(since);
-    }
-    
-    sql += ` ORDER BY m.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
-    params.push(parseInt(limit), parseInt(offset));
-    
-    const result = await query(sql, params);
-    
-    // Get total count with same filters
-    let countSql = 'SELECT COUNT(*) as total FROM messages m WHERE 1=1';
-    const countParams = [];
-    let countIndex = 1;
-    
-    if (lift_id) {
-      countSql += ` AND m.lift_id = $${countIndex++}`;
-      countParams.push(parseInt(lift_id));
-    }
-    
-    if (ticket_id) {
-      countSql += ` AND m.meta->>'ticket_id' = $${countIndex++}`;
-      countParams.push(ticket_id);
-    }
-    
-    if (direction) {
-      countSql += ` AND m.direction = $${countIndex++}`;
-      countParams.push(direction);
-    }
-    
-    if (type) {
-      countSql += ` AND m.type = $${countIndex++}`;
-      countParams.push(type);
-    }
-    
-    if (status) {
-      countSql += ` AND m.status = $${countIndex++}`;
-      countParams.push(status);
-    }
-    
-    if (since) {
-      countSql += ` AND m.created_at >= $${countIndex++}`;
-      countParams.push(since);
-    }
-    
-    const countResult = await query(countSql, countParams);
-    
-    res.json({
-      ok: true,
-      data: result.rows,
-      pagination: {
-        total: parseInt(countResult.rows[0].total),
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        returned: result.rows.length
-      },
-      filters: { lift_id, ticket_id, direction, type, status, since }
-    });
-  } catch (error) {
-    console.error('[troubleshoot/messages] Error:', error);
-    res.status(500).json({ 
-      ok: false, 
-      error: { 
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to retrieve messages' 
-      } 
-    });
-  }
-});
-
 // Get system event logs with filtering
 router.get('/logs', async (req, res) => {
   try {
@@ -659,12 +538,11 @@ router.get('/diagnostics', async (req, res) => {
     // Get counts
     const counts = {};
     try {
-      const [lifts, contacts, tickets, openTickets, messages, logs] = await Promise.all([
+      const [lifts, contacts, tickets, openTickets, logs] = await Promise.all([
         query('SELECT COUNT(*) as count FROM lifts'),
         query('SELECT COUNT(*) as count FROM contacts'),
         query('SELECT COUNT(*) as count FROM tickets'),
         query("SELECT COUNT(*) as count FROM tickets WHERE status = 'open'"),
-        query('SELECT COUNT(*) as count FROM messages'),
         query('SELECT COUNT(*) as count FROM event_log')
       ]);
       
@@ -672,7 +550,6 @@ router.get('/diagnostics', async (req, res) => {
       counts.contacts = parseInt(contacts.rows[0].count);
       counts.tickets = parseInt(tickets.rows[0].count);
       counts.open_tickets = parseInt(openTickets.rows[0].count);
-      counts.messages = parseInt(messages.rows[0].count);
       counts.event_logs = parseInt(logs.rows[0].count);
     } catch (err) {
       counts.error = err.message;
@@ -681,15 +558,13 @@ router.get('/diagnostics', async (req, res) => {
     // Recent activity
     const recentActivity = {};
     try {
-      const [lastTicket, lastMessage, lastEvent, lastLog] = await Promise.all([
+      const [lastTicket, lastEvent, lastLog] = await Promise.all([
         query('SELECT created_at FROM tickets ORDER BY created_at DESC LIMIT 1'),
-        query('SELECT created_at FROM messages ORDER BY created_at DESC LIMIT 1'),
         query('SELECT MAX(ts) as last_ts FROM events'),
         query('SELECT created_at FROM event_log ORDER BY created_at DESC LIMIT 1')
       ]);
       
       recentActivity.last_ticket = lastTicket.rows[0]?.created_at || null;
-      recentActivity.last_message = lastMessage.rows[0]?.created_at || null;
       recentActivity.last_event = lastEvent.rows[0]?.last_ts || null;
       recentActivity.last_log = lastLog.rows[0]?.created_at || null;
     } catch (err) {
@@ -760,4 +635,270 @@ router.get('/event-types', async (req, res) => {
   }
 });
 
+// ============================================================================
+// NEW ADVANCED FEATURES
+// ============================================================================
+
+// Get application logs (captured console output)
+router.get('/logs/application', async (req, res) => {
+  try {
+    const { since, level, limit = 100, search } = req.query;
+    
+    let logs = global.LOG_BUFFER || [];
+    
+    // Filter by timestamp
+    if (since) {
+      logs = logs.filter(log => log.timestamp >= since);
+    }
+    
+    // Filter by level
+    if (level) {
+      logs = logs.filter(log => log.level === level);
+    }
+    
+    // Filter by search term
+    if (search) {
+      const searchLower = search.toLowerCase();
+      logs = logs.filter(log => log.message.toLowerCase().includes(searchLower));
+    }
+    
+    // Limit results (get most recent)
+    logs = logs.slice(-parseInt(limit));
+    
+    res.json({
+      ok: true,
+      logs: logs,
+      count: logs.length,
+      buffer_size: (global.LOG_BUFFER || []).length
+    });
+  } catch (error) {
+    console.error('[troubleshoot/logs/application] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { 
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve application logs' 
+      } 
+    });
+  }
+});
+
+// Get system performance metrics
+router.get('/metrics', async (req, res) => {
+  try {
+    // Calculate message delivery metrics (last 24 hours)
+    const messageMetrics = await query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE direction = 'out') as total_sent,
+        COUNT(*) FILTER (WHERE direction = 'out' AND status = 'sent') as successful,
+        COUNT(*) FILTER (WHERE direction = 'out' AND status = 'failed') as failed,
+        AVG(EXTRACT(EPOCH FROM (delivered_at - created_at))) FILTER (WHERE delivered_at IS NOT NULL) as avg_delivery_time_seconds
+      FROM messages
+      WHERE created_at > NOW() - INTERVAL '24 hours'
+    `);
+    
+    // Calculate button response metrics (last 24 hours)
+    const buttonMetrics = await query(`
+      SELECT 
+        COUNT(DISTINCT t.id) as total_tickets,
+        COUNT(DISTINCT t.id) FILTER (WHERE t.button_clicked IS NOT NULL) as responded_tickets,
+        AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at))) FILTER (WHERE t.button_clicked IS NOT NULL) as avg_response_time_seconds
+      FROM tickets t
+      WHERE t.created_at > NOW() - INTERVAL '24 hours'
+    `);
+    
+    const msgRow = messageMetrics.rows[0];
+    const btnRow = buttonMetrics.rows[0];
+    
+    const totalSent = parseInt(msgRow.total_sent) || 0;
+    const successful = parseInt(msgRow.successful) || 0;
+    const failed = parseInt(msgRow.failed) || 0;
+    
+    const totalTickets = parseInt(btnRow.total_tickets) || 0;
+    const respondedTickets = parseInt(btnRow.responded_tickets) || 0;
+    
+    res.json({
+      ok: true,
+      data: {
+        timestamp: new Date().toISOString(),
+        period: 'last_24_hours',
+        message_delivery: {
+          total_sent: totalSent,
+          successful: successful,
+          failed: failed,
+          success_rate_percent: totalSent > 0 ? ((successful / totalSent) * 100).toFixed(2) : 0,
+          avg_delivery_time_seconds: parseFloat(msgRow.avg_delivery_time_seconds) || null
+        },
+        button_responses: {
+          total_tickets: totalTickets,
+          responded_tickets: respondedTickets,
+          response_rate_percent: totalTickets > 0 ? ((respondedTickets / totalTickets) * 100).toFixed(2) : 0,
+          avg_response_time_seconds: parseFloat(btnRow.avg_response_time_seconds) || null
+        },
+        system: {
+          uptime_seconds: process.uptime(),
+          memory_mb: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2),
+          node_version: process.version
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[troubleshoot/metrics] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { 
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve metrics' 
+      } 
+    });
+  }
+});
+
+// Get time-series analytics
+router.get('/analytics/timeseries', async (req, res) => {
+  try {
+    const { metric, interval = '1h', since, until } = req.query;
+    
+    if (!metric) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'MISSING_PARAMETER',
+          message: 'metric parameter is required (tickets, messages, or button_clicks)'
+        }
+      });
+    }
+    
+    // SECURITY FIX: Whitelist validation to prevent SQL injection
+    const validIntervals = { '1h': 'hour', '1d': 'day', '1w': 'week' };
+    const truncInterval = validIntervals[interval];
+    
+    if (!truncInterval) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'INVALID_INTERVAL',
+          message: 'Valid intervals: 1h, 1d, 1w'
+        }
+      });
+    }
+    
+    // Build date range safely
+    const sinceClause = since ? `AND created_at >= $1` : `AND created_at > NOW() - INTERVAL '7 days'`;
+    const untilClause = until ? (since ? `AND created_at <= $2` : `AND created_at <= $1`) : '';
+    
+    const params = [];
+    if (since) params.push(since);
+    if (until) params.push(until);
+    
+    let sql;
+    
+    if (metric === 'tickets') {
+      sql = `
+        SELECT 
+          DATE_TRUNC('${truncInterval}', created_at) as time_bucket,
+          COUNT(*) as count,
+          COUNT(*) FILTER (WHERE status = 'open') as open_count,
+          COUNT(*) FILTER (WHERE status = 'closed') as closed_count
+        FROM tickets
+        WHERE 1=1 ${sinceClause} ${untilClause}
+        GROUP BY time_bucket
+        ORDER BY time_bucket ASC
+      `;
+    } else if (metric === 'messages') {
+      sql = `
+        SELECT 
+          DATE_TRUNC('${truncInterval}', created_at) as time_bucket,
+          COUNT(*) as count,
+          COUNT(*) FILTER (WHERE direction = 'out' AND status = 'sent') as sent_count,
+          COUNT(*) FILTER (WHERE direction = 'out' AND status = 'failed') as failed_count
+        FROM messages
+        WHERE 1=1 ${sinceClause} ${untilClause}
+        GROUP BY time_bucket
+        ORDER BY time_bucket ASC
+      `;
+    } else if (metric === 'button_clicks') {
+      sql = `
+        SELECT 
+          DATE_TRUNC('${truncInterval}', created_at) as time_bucket,
+          COUNT(*) as count,
+          COUNT(*) FILTER (WHERE metadata->>'payload' = 'Test') as test_clicks,
+          COUNT(*) FILTER (WHERE metadata->>'payload' = 'Maintenance') as maintenance_clicks,
+          COUNT(*) FILTER (WHERE metadata->>'payload' = 'Entrapment') as entrapment_clicks
+        FROM event_log
+        WHERE event_type = 'button_click_received'
+          ${sinceClause} ${untilClause}
+        GROUP BY time_bucket
+        ORDER BY time_bucket ASC
+      `;
+    } else {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'INVALID_METRIC',
+          message: 'Valid metrics: tickets, messages, button_clicks'
+        }
+      });
+    }
+    
+    const result = await query(sql, params);
+    
+    res.json({
+      ok: true,
+      data: {
+        metric: metric,
+        interval: interval,
+        since: since || 'last_7_days',
+        until: until || 'now',
+        datapoints: result.rows
+      }
+    });
+  } catch (error) {
+    console.error('[troubleshoot/analytics/timeseries] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { 
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve time-series data' 
+      } 
+    });
+  }
+});
+
+// Get recent events (polling-based real-time monitoring)
+router.get('/events/recent', async (req, res) => {
+  try {
+    const { since, limit = 50 } = req.query;
+    
+    // Default to events in last 30 seconds if no 'since' provided
+    const sinceTime = since || new Date(Date.now() - 30000).toISOString();
+    
+    const result = await query(`
+      SELECT *
+      FROM event_log
+      WHERE created_at >= $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `, [sinceTime, parseInt(limit)]);
+    
+    res.json({
+      ok: true,
+      events: result.rows,
+      count: result.rows.length,
+      timestamp: new Date().toISOString(),
+      next_poll_url: `/api/troubleshoot/events/recent?since=${new Date().toISOString()}`
+    });
+  } catch (error) {
+    console.error('[troubleshoot/events/recent] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { 
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to retrieve recent events' 
+      } 
+    });
+  }
+});
+
 module.exports = router;
+
