@@ -600,7 +600,14 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     // Check for interactive button reply (Woosh Bridge format)
     if (!message || message.type !== 'interactive' || message.interactive?.type !== 'button_reply') {
-      console.log('[webhook/whatsapp] Not an interactive button click, ignoring');
+      console.log('[webhook/whatsapp] Not an interactive button click, ignoring:', {
+        hasMessage: !!message,
+        messageType: message?.type,
+        interactiveType: message?.interactive?.type,
+        reason: !message ? 'no_message' : 
+                message.type !== 'interactive' ? 'not_interactive' : 
+                'not_button_reply'
+      });
       return res.status(200).json({ status: 'ok', processed: false });
     }
     
