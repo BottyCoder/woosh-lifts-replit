@@ -136,6 +136,26 @@ app.get('/admin/status', async (req, res) => {
   }
 });
 
+// Fix sequence endpoint
+app.post('/admin/fix-sequence', async (req, res) => {
+  try {
+    const token = req.header('X-Admin-Token') || req.header('Authorization')?.replace('Bearer ', '');
+    const adminToken = process.env.ADMIN_TOKEN;
+    
+    if (!adminToken || !token || token !== adminToken) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    
+    // Fix tickets sequence
+    await query("SELECT setval('tickets_id_seq', (SELECT COALESCE(MAX(id), 1) FROM tickets))");
+    
+    res.json({ ok: true, message: 'Sequence fixed' });
+  } catch (error) {
+    console.error('[admin/fix-sequence] error:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
 // Health check endpoint
 app.get('/healthz', (_, res) => res.send('ok'));
 
