@@ -1,0 +1,160 @@
+2025-10-01 09:03:00.60
+9e382584
+User
+}
+2025-10-01 09:03:00.66
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.667Z', from: null, sampleText: null }
+2025-10-01 09:03:00.80
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.798Z', from: null, sampleText: null }
+2025-10-01 09:03:00.80
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.800Z', from: null, sampleText: null }
+2025-10-01 09:03:00.83
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.838Z', from: null, sampleText: null }
+2025-10-01 09:03:00.84
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.846Z', from: null, sampleText: null }
+2025-10-01 09:03:00.90
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.908Z', from: null, sampleText: null }
+2025-10-01 09:03:00.95
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:03:00.957Z', from: null, sampleText: null }
+2025-10-01 09:03:01.11
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:01.12
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:01.17
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:01.17
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:01.17
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:01.17
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:01.18
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:01.19
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:01.19
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:02.93
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:02.99
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:03.00
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:03.00
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:03.17
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:03.21
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:03.21
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:03.23
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:03.24
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:03.24
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:03.28
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:03:03.29
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:03.29
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:03:03.59
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:03:03.59
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":true,"ticket_id":13,"followup_sent":true}
+2025-10-01 09:04:26.20
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:04:26.201Z', from: null, sampleText: null }
+2025-10-01 09:04:26.32
+9e382584
+User
+[WEBHOOK] Processed inbound: { at: '2025-10-01T07:04:26.321Z', from: null, sampleText: null }
+2025-10-01 09:04:28.53
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:04:28.57
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:04:28.57
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}
+2025-10-01 09:04:28.65
+9e382584
+User
+[WEBHOOK] Forwarding to GrowthPoint: https://gplifts.woosh.ai/webhooks/whatsapp
+2025-10-01 09:04:28.68
+9e382584
+User
+[WEBHOOK] GrowthPoint response: 200
+2025-10-01 09:04:28.68
+9e382584
+User
+[WEBHOOK] GrowthPoint response body: {"status":"ok","processed":false}

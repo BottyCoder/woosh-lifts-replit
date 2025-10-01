@@ -131,14 +131,18 @@ async function sendInteractiveViaBridge({ baseUrl, apiKey, to, bodyText, buttons
   const responseText = await res.text();
   let json; try { json = responseText ? JSON.parse(responseText) : {}; } catch (_) { json = { raw: responseText }; }
 
+  console.log('[bridge] Interactive message API response:', { status: res.status, body: json });
+
   if (res.status === 401 || res.status === 403) {
     const err = new Error("bridge_auth");
     err.code = "auth"; err.status = res.status; err.body = json;
+    console.error('[bridge] Authentication error:', err);
     throw err;
   }
   if (res.status < 200 || res.status >= 300) {
     const err = new Error(`bridge_non_2xx_${res.status}`);
     err.code = "send_failed"; err.status = res.status; err.body = json;
+    console.error('[bridge] Send failed:', err);
     throw err;
   }
   return json;

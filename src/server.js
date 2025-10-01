@@ -739,7 +739,8 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         const { sendInteractiveViaBridge } = require('./lib/bridge');
         
         // Send interactive message asking if service provider was notified (session is open, no template needed)
-        await sendInteractiveViaBridge({
+        console.log(`[webhook/whatsapp] Sending interactive YES button to ${fromNumber} for ticket ${ticket.id}`);
+        const bridgeResponse = await sendInteractiveViaBridge({
           baseUrl: BRIDGE_BASE_URL,
           apiKey: BRIDGE_API_KEY,
           to: fromNumber,
@@ -747,7 +748,8 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
           buttons: [{ id: "entrapment_yes", title: "YES" }]
         });
         
-        console.log('[webhook/whatsapp] Follow-up interactive message sent');
+        console.log('[webhook/whatsapp] Follow-up interactive message sent successfully');
+        console.log('[webhook/whatsapp] Bridge API response:', JSON.stringify(bridgeResponse, null, 2));
         
         // Update ticket to track that entrapment was clicked and start reminder timer
         await query(
