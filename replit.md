@@ -127,15 +127,26 @@ ADMIN_TOKEN - Admin API authentication token
 4. Plain text for SMS
 5. Error handling with retry logic (30-second timeout)
 
+**Initial Alert Reminder System**:
+1. SMS received → Ticket created → WhatsApp template sent with 3 buttons (Test/Maintenance/Entrapment)
+2. Timer starts immediately upon ticket creation
+3. If no button clicked within 1 minute (testing interval, will be 5 minutes in production):
+   - Send reminder 1/3: Template resent to all contacts with all 3 buttons
+   - Wait 1 minute, send reminder 2/3
+   - Wait 1 minute, send reminder 3/3
+   - After 3rd reminder with no response, auto-close ticket with critical escalation alert
+   - Send to all contacts: "⚠️ CRITICAL ALERT: Emergency ticket auto-closed... NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED."
+4. If any button clicked: Timer stops, ticket proceeds to appropriate flow
+
 **Entrapment Flow with Auto-Reminders**:
 1. User clicks "Entrapment" button on initial emergency alert
 2. System sends follow-up template (`growthpoint_entrapment_confirmed`) with YES button only
 3. Ticket marked as `entrapment_awaiting_confirmation`, reminder timer starts automatically
 4. If YES clicked: Send "We have received a "Yes" response. The service provider has been notified and this ticket has been closed." to all contacts, close ticket
 5. If no response within 1 minute (testing interval, will be 5 minutes in production):
-   - Send reminder 1/3: "⚠️ REMINDER 1/3: Please confirm that the service provider has been notified..."
-   - Wait 1 minute, send reminder 2/3
-   - Wait 1 minute, send reminder 3/3
+   - Send reminder 1/3 with interactive YES button: "⚠️ REMINDER 1/3: Please confirm that the service provider has been notified..."
+   - Wait 1 minute, send reminder 2/3 with YES button
+   - Wait 1 minute, send reminder 3/3 with YES button
    - After 3rd reminder with no response, auto-close ticket with note "Auto-closed: Service provider notification not confirmed after 3 reminders"
    - Send alert to all contacts: "⚠️ ALERT: Ticket auto-closed... Please follow up immediately."
-6. Background job runs every 60 seconds to check for pending reminders
+6. Background job runs every 60 seconds to check for pending reminders (both initial alerts and entrapment confirmations)

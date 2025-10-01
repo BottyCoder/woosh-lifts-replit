@@ -262,10 +262,10 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
-    // Create ticket for this emergency
+    // Create ticket for this emergency with timer started
     const ticketResult = await query(
-      `INSERT INTO tickets (lift_id, sms_id, status, notes)
-       VALUES ($1, $2, 'open', $3)
+      `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
+       VALUES ($1, $2, 'open', $3, 0, now())
        RETURNING *`,
       [lift.id, smsId, incoming]
     );
@@ -417,10 +417,10 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
-    // Create ticket for this emergency
+    // Create ticket for this emergency with timer started
     const ticketResult = await query(
-      `INSERT INTO tickets (lift_id, sms_id, status, notes)
-       VALUES ($1, $2, 'open', $3)
+      `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
+       VALUES ($1, $2, 'open', $3, 0, now())
        RETURNING *`,
       [lift.id, smsId, incoming]
     );
@@ -869,15 +869,119 @@ if (typeof global.LAST_INBOUND === "undefined") global.LAST_INBOUND = null;
 // Error handling middleware
 app.use(errorHandler);
 
+// Helper function to process initial alert reminders
+async function processInitialAlertReminder(ticket) {
+  const newCount = (ticket.reminder_count || 0) + 1;
+  console.log(`[reminder] Processing initial alert for ticket ${ticket.id}, reminder ${newCount}/3`);
+  
+  if (newCount > 3) {
+    // All 3 reminders sent with no response - escalate
+    await query(
+      `UPDATE tickets 
+       SET status = 'closed',
+           reminder_count = $1,
+           resolved_at = now(),
+           closure_note = 'Auto-closed: No response to emergency alert after 3 reminders',
+           updated_at = now()
+       WHERE id = $2`,
+      [newCount, ticket.id]
+    );
+    
+    const escalationMessage = `⚠️ CRITICAL ALERT: Emergency ticket auto-closed for ${ticket.lift_name}. NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED.`;
+    try {
+      await notifyAllContactsForLift(ticket.lift_id, escalationMessage);
+      console.log(`[reminder] Initial alert ticket ${ticket.id} auto-closed, escalation sent`);
+      
+      logEvent('ticket_auto_closed_no_response', {
+        ticket_id: ticket.id,
+        lift_id: ticket.lift_id,
+        reminder_count: newCount
+      });
+    } catch (err) {
+      console.error(`[reminder] Failed to send escalation for ticket ${ticket.id}:`, err);
+    }
+  } else {
+    // Send reminder template to all contacts
+    try {
+      const { sendTemplateViaBridge } = require('./lib/bridge');
+      
+      // Get all contacts for this lift
+      const contactsResult = await query(
+        `SELECT c.* FROM contacts c
+         JOIN lift_contacts lc ON c.id = lc.contact_id
+         WHERE lc.lift_id = $1`,
+        [ticket.lift_id]
+      );
+      
+      const liftLocation = `${ticket.site_name || 'Site'} - ${ticket.building || 'Lift'}`;
+      
+      for (const contact of contactsResult.rows) {
+        if (!contact.primary_msisdn) continue;
+        
+        try {
+          await sendTemplateViaBridge({
+            baseUrl: BRIDGE_BASE_URL,
+            apiKey: BRIDGE_API_KEY,
+            to: contact.primary_msisdn,
+            name: BRIDGE_TEMPLATE_NAME,
+            languageCode: BRIDGE_TEMPLATE_LANG,
+            components: [
+              {
+                type: 'body',
+                parameters: [{ type: 'text', text: liftLocation }]
+              }
+            ]
+          });
+          
+          console.log(`[reminder] Sent initial alert reminder ${newCount}/3 to ${contact.display_name}`);
+        } catch (err) {
+          console.error(`[reminder] Failed to send reminder to ${contact.display_name}:`, err);
+        }
+      }
+      
+      // Update ticket
+      await query(
+        `UPDATE tickets 
+         SET reminder_count = $1,
+             last_reminder_at = now(),
+             updated_at = now()
+         WHERE id = $2`,
+        [newCount, ticket.id]
+      );
+      
+      logEvent('initial_alert_reminder_sent', {
+        ticket_id: ticket.id,
+        reminder_count: newCount,
+        lift_name: ticket.lift_name
+      });
+    } catch (err) {
+      console.error(`[reminder] Failed to process initial alert reminder for ticket ${ticket.id}:`, err);
+    }
+  }
+}
+
 // Background job to check for pending reminders
 async function checkPendingReminders() {
   try {
-    // Find tickets that need reminders:
-    // - Status is open
-    // - button_clicked is 'entrapment_awaiting_confirmation'
-    // - reminder_count < 3
-    // - last_reminder_at was more than 1 minute ago
-    const result = await query(
+    // Find tickets that need reminders - TWO types:
+    // Type 1: Initial alert awaiting any response (button_clicked IS NULL)
+    // Type 2: Entrapment awaiting confirmation (button_clicked = 'entrapment_awaiting_confirmation')
+    // Both: Status is open, reminder_count <= 3, last_reminder_at > 1 minute ago
+    
+    // Type 1: Initial alerts with no response
+    const initialAlertsResult = await query(
+      `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
+              l.site_name, l.building
+       FROM tickets t
+       JOIN lifts l ON t.lift_id = l.id
+       WHERE t.status = 'open'
+         AND t.button_clicked IS NULL
+         AND t.reminder_count <= 3
+         AND t.last_reminder_at < NOW() - INTERVAL '1 minute'`
+    );
+    
+    // Type 2: Entrapment confirmations
+    const entrapmentResult = await query(
       `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
               c.primary_msisdn, c.display_name
        FROM tickets t
@@ -888,6 +992,14 @@ async function checkPendingReminders() {
          AND t.reminder_count <= 3
          AND t.last_reminder_at < NOW() - INTERVAL '1 minute'`
     );
+    
+    // Process initial alert reminders
+    for (const ticket of initialAlertsResult.rows) {
+      await processInitialAlertReminder(ticket);
+    }
+    
+    // Process entrapment confirmation reminders
+    const result = entrapmentResult;
     
     for (const ticket of result.rows) {
       const newCount = (ticket.reminder_count || 0) + 1;
