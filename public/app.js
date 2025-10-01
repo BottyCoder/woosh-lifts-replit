@@ -487,3 +487,97 @@ function formatDateTime(dateString) {
         minute: '2-digit'
     });
 }
+
+// Save Lift Function
+async function saveLift() {
+    const msisdn = document.getElementById('lift-msisdn').value.trim();
+    const siteName = document.getElementById('lift-site-name').value.trim();
+    const building = document.getElementById('lift-building').value.trim();
+    const notes = document.getElementById('lift-notes').value.trim();
+
+    if (!msisdn) {
+        alert('MSISDN (phone number) is required');
+        return;
+    }
+
+    try {
+        const response = await authFetch(`${BASE_URL}/admin/lifts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                msisdn,
+                site_name: siteName,
+                building,
+                notes
+            })
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Failed to save lift');
+        }
+
+        alert('Lift saved successfully!');
+        
+        // Clear form
+        document.getElementById('lift-msisdn').value = '';
+        document.getElementById('lift-site-name').value = '';
+        document.getElementById('lift-building').value = '';
+        document.getElementById('lift-notes').value = '';
+
+        // Reload list
+        loadLifts();
+
+    } catch (error) {
+        console.error('Error saving lift:', error);
+        alert('Error saving lift: ' + error.message);
+    }
+}
+
+// Save Contact Function
+async function saveContact() {
+    const displayName = document.getElementById('contact-name').value.trim();
+    const msisdn = document.getElementById('contact-msisdn').value.trim();
+    const email = document.getElementById('contact-email').value.trim();
+    const role = document.getElementById('contact-role').value.trim();
+
+    if (!displayName || !msisdn) {
+        alert('Display name and phone number are required');
+        return;
+    }
+
+    try {
+        const response = await authFetch(`${BASE_URL}/admin/contacts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                display_name: displayName,
+                primary_msisdn: msisdn,
+                email: email || null,
+                role: role || null
+            })
+        });
+
+        const result = await response.json();
+
+        if (!result.ok) {
+            throw new Error(result.error?.message || 'Failed to save contact');
+        }
+
+        alert('Contact saved successfully!');
+        
+        // Clear form
+        document.getElementById('contact-name').value = '';
+        document.getElementById('contact-msisdn').value = '';
+        document.getElementById('contact-email').value = '';
+        document.getElementById('contact-role').value = '';
+
+        // Reload list
+        loadContacts();
+
+    } catch (error) {
+        console.error('Error saving contact:', error);
+        alert('Error saving contact: ' + error.message);
+    }
+}
