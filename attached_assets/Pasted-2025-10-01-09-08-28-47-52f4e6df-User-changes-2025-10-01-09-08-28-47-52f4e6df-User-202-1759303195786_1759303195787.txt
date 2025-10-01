@@ -1,0 +1,148 @@
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"changes": [
+2025-10-01 09:08:28.47
+52f4e6df
+User
+{
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"value": {
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"messaging_product": "whatsapp",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"metadata": {
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"display_phone_number": "27690232755",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"phone_number_id": "861610750363214"
+2025-10-01 09:08:28.47
+52f4e6df
+User
+},
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"statuses": [
+2025-10-01 09:08:28.47
+52f4e6df
+User
+{
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"id": "wamid.HBgLMjc4MjQ1MzcxMjUVAgARGBIzN0E5RTg0NjRCQTk2MDc3NUUA",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"status": "sent",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"timestamp": "1759302505",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"recipient_id": "27824537125",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"conversation": {
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"id": "ce81902d317995e585f993da1c220cec",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"expiration_timestamp": "1759302505",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"origin": {
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"type": "utility"
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+},
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"pricing": {
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"billable": false,
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"pricing_model": "PMP",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"category": "utility",
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"type": "free_customer_service"
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+]
+2025-10-01 09:08:28.47
+52f4e6df
+User
+},
+2025-10-01 09:08:28.47
+52f4e6df
+User
+"field": "messages"
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+]
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+]
+2025-10-01 09:08:28.47
+52f4e6df
+User
+}
+2025-10-01 09:08:28.47
+52f4e6df
+User
+[webhook/whatsapp
