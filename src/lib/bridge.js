@@ -95,7 +95,7 @@ async function sendInteractiveViaBridge({ baseUrl, apiKey, to, bodyText, buttons
     err.code = "auth";
     throw err;
   }
-  const url = `${baseUrl.replace(/\/+$/,"")}/v1/send`;
+  const url = `${baseUrl.replace(/\/+$/,"")}/api/messages/send`;
 
   const interactive = {
     type: "button",
