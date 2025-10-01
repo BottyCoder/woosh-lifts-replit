@@ -1,0 +1,156 @@
+10-01 05:44:17.76
+0427efbf
+User
+"timestamp": "1759290256",
+2025-10-01 05:44:17.76
+0427efbf
+User
+"recipient_id": "27824537125",
+2025-10-01 05:44:17.76
+0427efbf
+User
+"conversation": {
+2025-10-01 05:44:17.76
+0427efbf
+User
+"id": "6df205dd4b8177bc8362e64d824b1b2a",
+2025-10-01 05:44:17.76
+0427efbf
+User
+"origin": {
+2025-10-01 05:44:17.76
+0427efbf
+User
+"type": "service"
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+},
+2025-10-01 05:44:17.76
+0427efbf
+User
+"pricing": {
+2025-10-01 05:44:17.76
+0427efbf
+User
+"billable": false,
+2025-10-01 05:44:17.76
+0427efbf
+User
+"pricing_model": "PMP",
+2025-10-01 05:44:17.76
+0427efbf
+User
+"category": "service",
+2025-10-01 05:44:17.76
+0427efbf
+User
+"type": "free_customer_service"
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+]
+2025-10-01 05:44:17.76
+0427efbf
+User
+},
+2025-10-01 05:44:17.76
+0427efbf
+User
+"field": "messages"
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+]
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+]
+2025-10-01 05:44:17.76
+0427efbf
+User
+}
+2025-10-01 05:44:17.76
+0427efbf
+User
+[webhook/whatsapp] Not a button click, ignoring: { hasMessage: false, messageType: undefined, reason: 'no_message' }
+2025-10-01 05:44:17.76
+0427efbf
+User
+POST /webhooks/whatsapp 200 33 - 1.586 ms
+2025-10-01 05:44:17.76
+0427efbf
+User
+{"level":"info","route":"/webhooks/whatsapp","method":"POST","status":200,"dur_ms":2,"ts":"2025-10-01T03:44:17.766Z"}
+2025-10-01 05:44:17.88
+0427efbf
+User
+[webhook/whatsapp] Authentication successful
+2025-10-01 05:44:17.88
+0427efbf
+User
+[webhook/whatsapp] Received: {
+2025-10-01 05:44:17.88
+0427efbf
+User
+"object": "whatsapp_business_account",
+2025-10-01 05:44:17.88
+0427efbf
+User
+"entry": [
+2025-10-01 05:44:17.88
+0427efbf
+User
+{
+2025-10-01 05:44:17.88
+0427efbf
+User
+"id": "620143974365970",
+2025-10-01 05:44:17.88
+0427efbf
+User
+"changes": [
+2025-10-01 05:44:17.88
+0427efbf
+User
+{
+2025-10-01 05:44:17.88
+0427efbf
+User
+"value": {
+2025-10-01 05:44:17.88
+0427efbf
+User
+"messaging_product": "whatsapp",
+2025-10-01 05:44:17.88
+0427efbf
+User
+"metadata": {
+2025-10-01 05:44:17.88
+0427efbf
+User
+"display_phone_number": "27690232755",
+2025-10-01 05:44:17.88
+0427efbf
+User
+"phone_number_id": "861610750363214"
