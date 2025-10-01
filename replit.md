@@ -16,6 +16,8 @@ Preferred communication style: Simple, everyday language.
 - Fixed Active Tickets metric calculation (fetches all tickets with limit=1000, filters for open + entrapment_awaiting_confirmation)
 - Implemented Messages Today count with proper endpoint structure handling
 - **Fixed reminder count bug**: System was showing 4/3 reminders due to off-by-one error in auto-close logic. Now correctly caps at 3/3 when auto-closing tickets after 3 unanswered reminders (applies to both initial alerts and entrapment confirmation flows)
+- **Added Linked Contacts visibility**: Lifts table now shows "Linked Contacts" column displaying all contacts linked to each lift (comma-separated names)
+- **Fixed Recent Tickets display**: Dashboard now shows 5 most recent tickets regardless of status (sorted by creation date), not just open tickets
 
 ## System Architecture
 
