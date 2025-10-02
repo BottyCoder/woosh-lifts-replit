@@ -7,7 +7,7 @@ async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode =
     err.code = "auth";
     throw err;
   }
-  const url = `${baseUrl.replace(/\/+$/,"")}/api/messages/send`;
+  const url = `${baseUrl.replace(/\/+$/,"")}/v1/send`;
   const template = { name, language: { code: languageCode } };
   if (components) template.components = components;
 
