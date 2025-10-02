@@ -16,6 +16,7 @@ const sendRoutes = require("./routes/send");
 const adminRoutes = require('./routes/admin');
 const statusRoutes = require('./routes/status');
 const troubleshootRoutes = require('./routes/troubleshoot');
+const chatRoutes = require('./routes/chat');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -189,6 +190,9 @@ app.use('/api/status', statusRoutes);
 
 // Mount AI troubleshooting routes (read-only with authentication)
 app.use('/api/troubleshoot', troubleshootRoutes);
+
+// Mount call centre chat routes
+app.use('/api/chat', chatRoutes);
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
@@ -896,6 +900,77 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         from: fromNumber, 
         payload: buttonPayload, 
         text: buttonText
+      });
+    } else if (message?.type === 'text' && message.text?.body) {
+      // Handle text message for chat system
+      const textMessage = message.text.body;
+      const fromNumber = message.from;
+      
+      console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
+      
+      // Find contact by WhatsApp number
+      const contactResult = await query(
+        'SELECT * FROM contacts WHERE primary_msisdn = $1',
+        [fromNumber]
+      );
+      
+      if (contactResult.rows.length === 0) {
+        console.log('[webhook/whatsapp] Contact not found for text message:', fromNumber);
+        return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
+      }
+      
+      const contact = contactResult.rows[0];
+      
+      // Find most recent open ticket for this contact
+      const ticketResult = await query(
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+         WHERE lc.contact_id = $1 
+           AND t.status = 'open'
+           AND t.created_at > NOW() - INTERVAL '6 hours'
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [contact.id]
+      );
+      
+      if (ticketResult.rows.length === 0) {
+        console.log('[webhook/whatsapp] No recent open ticket for contact:', contact.id);
+        return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_ticket' });
+      }
+      
+      const ticket = ticketResult.rows[0];
+      
+      // Save text message to chat_messages
+      await query(
+        `INSERT INTO chat_messages (ticket_id, from_number, to_number, message, direction, created_at)
+         VALUES ($1, $2, $3, $4, 'inbound', NOW())`,
+        [ticket.id, fromNumber, 'system', textMessage]
+      );
+      
+      console.log(`[webhook/whatsapp] Saved text message to ticket ${ticket.id}`);
+      
+      // Check if message contains "agent" keyword (case-insensitive)
+      if (textMessage.toLowerCase().includes('agent')) {
+        await query(
+          `UPDATE tickets SET agent_requested = true WHERE id = $1`,
+          [ticket.id]
+        );
+        console.log(`[webhook/whatsapp] Agent requested for ticket ${ticket.id}`);
+        
+        await query(
+          `INSERT INTO event_log (event_type, ticket_id, contact_id, metadata, created_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
+          ['agent_requested', ticket.id, contact.id, JSON.stringify({ message: textMessage, from: contact.display_name })]
+        );
+      }
+      
+      return res.status(200).json({ 
+        status: 'ok', 
+        processed: true,
+        ticket_id: ticket.id,
+        message_saved: true
       });
     } else {
       const reason = !message ? 'no_message' : 'not_button';
