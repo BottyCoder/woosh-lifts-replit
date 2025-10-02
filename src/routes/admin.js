@@ -68,6 +68,26 @@ router.get('/resolve/lift', async (req, res) => {
   }
 });
 
+// Get all lifts
+router.get('/lifts', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT * FROM lifts ORDER BY created_at DESC`
+    );
+
+    return res.json({
+      ok: true,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('[admin/lifts GET] error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Internal server error' } 
+    });
+  }
+});
+
 // Create or update lift
 router.post('/lifts', express.json(), async (req, res) => {
   try {
@@ -126,6 +146,26 @@ router.get('/lifts/:liftId/contacts', async (req, res) => {
     });
   } catch (error) {
     console.error('[admin/lifts/:liftId/contacts] error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Internal server error' } 
+    });
+  }
+});
+
+// Get all contacts
+router.get('/contacts', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT * FROM contacts ORDER BY display_name`
+    );
+
+    return res.json({
+      ok: true,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('[admin/contacts GET] error:', error);
     return res.status(500).json({ 
       ok: false, 
       error: { message: 'Internal server error' } 
@@ -228,37 +268,90 @@ router.delete('/lifts/:liftId/contacts/:contactId', async (req, res) => {
   }
 });
 
-// Get messages for a lift
+// Get messages (optionally filtered by lift_id)
 router.get('/messages', async (req, res) => {
   try {
     const { lift_id, limit = 50 } = req.query;
     
-    if (!lift_id) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: { message: 'Lift ID is required' } 
-      });
+    let sql, params;
+    if (lift_id) {
+      sql = `SELECT m.id, m.lift_id, m.msisdn, m.direction, m.type, m.status, m.body, 
+                    m.created_at as ts, m.meta, m.wa_id, m.current_status, 
+                    m.delivered_at, m.read_at, m.error_code, m.error_message,
+                    COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+             FROM messages m
+             LEFT JOIN lifts l ON m.lift_id = l.id
+             WHERE m.lift_id = $1
+             ORDER BY m.created_at DESC
+             LIMIT $2`;
+      params = [lift_id, parseInt(limit)];
+    } else {
+      sql = `SELECT m.id, m.lift_id, m.msisdn, m.direction, m.type, m.status, m.body, 
+                    m.created_at as ts, m.meta, m.wa_id, m.current_status,
+                    m.delivered_at, m.read_at, m.error_code, m.error_message,
+                    COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+             FROM messages m
+             LEFT JOIN lifts l ON m.lift_id = l.id
+             ORDER BY m.created_at DESC
+             LIMIT $1`;
+      params = [parseInt(limit)];
     }
 
-    const result = await query(
-      `SELECT id, lift_id, msisdn, direction, type, status, body, 
-              created_at as ts, meta
-       FROM messages
-       WHERE lift_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2`,
-      [lift_id, parseInt(limit)]
-    );
+    const result = await query(sql, params);
 
     return res.json({
       ok: true,
       data: {
-        items: result.rows,
+        messages: result.rows,
         total: result.rows.length
       }
     });
   } catch (error) {
     console.error('[admin/messages] error:', error);
+    return res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Internal server error' } 
+    });
+  }
+});
+
+// Get all tickets
+router.get('/tickets', async (req, res) => {
+  try {
+    const { status, limit = 100 } = req.query;
+    
+    let sql, params;
+    if (status) {
+      sql = `SELECT t.*, 
+                    COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
+                    c.display_name as responded_by_name
+             FROM tickets t
+             LEFT JOIN lifts l ON t.lift_id = l.id
+             LEFT JOIN contacts c ON t.responded_by = c.id
+             WHERE t.status = $1
+             ORDER BY t.created_at DESC
+             LIMIT $2`;
+      params = [status, parseInt(limit)];
+    } else {
+      sql = `SELECT t.*, 
+                    COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
+                    c.display_name as responded_by_name
+             FROM tickets t
+             LEFT JOIN lifts l ON t.lift_id = l.id
+             LEFT JOIN contacts c ON t.responded_by = c.id
+             ORDER BY t.created_at DESC
+             LIMIT $1`;
+      params = [parseInt(limit)];
+    }
+
+    const result = await query(sql, params);
+
+    return res.json({
+      ok: true,
+      data: result.rows
+    });
+  } catch (error) {
+    console.error('[admin/tickets] error:', error);
     return res.status(500).json({ 
       ok: false, 
       error: { message: 'Internal server error' } 

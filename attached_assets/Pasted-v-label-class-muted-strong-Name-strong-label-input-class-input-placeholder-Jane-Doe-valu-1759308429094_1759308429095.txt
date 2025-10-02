@@ -1,0 +1,42 @@
+v><label class="muted"><strong>Name</strong></label><input class="input" placeholder="Jane Doe" value="Jane Doe"/></div>
+                <div><label class="muted"><strong>Mobile</strong></label><input class="input" placeholder="2782…" value="27824537125"/></div>
+                <div><label class="muted"><strong>Email</strong></label><input class="input" placeholder="name@example.com" value="jane@example.com"/></div>
+              </div>
+              <div style="margin-top:12px; display:flex; gap:10px;">
+                <button class="btn btn--primary btn--sm">Save Contact</button>
+                <button class="btn btn--secondary btn--sm">Add Another</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="card__header">Recent Messages</div>
+            <div class="card__body">
+              <div style="display:flex; flex-direction:column; gap:12px;">
+                <div class="round-lg" style="background:#fff; border:1px solid var(--border); padding:12px;">
+                  <div style="display:flex; justify-content:space-between;">
+                    <strong>Outbound</strong>
+                    <span class="pill pill--pink">WA</span>
+                  </div>
+                  <div class="muted">“Engineer en route in 10 minutes.”</div>
+                </div>
+                <div class="round-lg" style="background:#fff; border:1px solid var(--border); padding:12px;">
+                  <div style="display:flex; justify-content:space-between;">
+                    <strong>Inbound</strong>
+                    <span class="pill pill--amber">SMS</span>
+                  </div>
+                  <div class="muted">“Thanks, door access code is 4321.”</div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:6px;">
+                  <input class="input" placeholder="Type a message…" style="flex:1;" />
+                  <button class="btn btn--info">Send</button>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

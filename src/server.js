@@ -14,6 +14,9 @@ const { getPagination, paginateQuery } = require("./pagination");
 const smsRoutes = require('./routes/sms');
 const sendRoutes = require("./routes/send");
 const adminRoutes = require('./routes/admin');
+const statusRoutes = require('./routes/status');
+const troubleshootRoutes = require('./routes/troubleshoot');
+const chatRoutes = require('./routes/chat');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -130,12 +133,7 @@ loadRegistry();
 // Routes
 app.get("/", (_req, res) => res.status(200).send("woosh-lifts: ok"));
 
-// Mount SMS routes
-app.use('/sms', smsRoutes);
-app.use('/send', sendRoutes);
-app.use('/admin', adminRoutes);
-
-// Admin status endpoint
+// Admin status endpoint (public - no auth required)
 app.get('/admin/status', async (req, res) => {
   try {
     const templateEnabled = Boolean(process.env.BRIDGE_TEMPLATE_NAME && process.env.BRIDGE_TEMPLATE_LANG);
@@ -183,6 +181,18 @@ app.get('/admin/status', async (req, res) => {
     res.status(500).json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } });
   }
 });
+
+// Mount routes
+app.use('/sms', smsRoutes);
+app.use('/send', sendRoutes);
+app.use('/admin', adminRoutes);
+app.use('/api/status', statusRoutes);
+
+// Mount AI troubleshooting routes (read-only with authentication)
+app.use('/api/troubleshoot', troubleshootRoutes);
+
+// Mount call centre chat routes
+app.use('/api/chat', chatRoutes);
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
@@ -351,6 +361,14 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Log inbound SMS message to messages table
+    await query(
+      `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, meta)
+       VALUES ($1, $2, 'in', 'sms', 'received', $3, $4)`,
+      [lift.id, toDigits, incoming, JSON.stringify({ sms_id: smsId })]
+    );
+    console.log('[sms/direct] ✅ Logged inbound SMS to messages table');
+
     // Create ticket for this emergency with timer started
     const ticketResult = await query(
       `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
@@ -432,6 +450,19 @@ app.post('/sms/direct', jsonParser, async (req, res) => {
               console.log(`[sms/direct] Saved message ID ${messageId} to ticket_messages`);
             } catch (msgErr) {
               console.error(`[sms/direct] Failed to save message to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `Emergency alert: ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [lift.id, to, messageBody, messageId, JSON.stringify({ template: tplName, ticket_id: ticket.id })]
+              );
+              console.log(`[sms/direct] ✅ Logged outbound WhatsApp template to messages table`);
+            } catch (logErr) {
+              console.error(`[sms/direct] Failed to log message to messages table:`, logErr);
             }
           }
           
@@ -553,6 +584,14 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
     const lift = liftResult.rows[0];
     logEvent('lift_found', { sms_id: smsId, lift_id: lift.id, lift_msisdn: plus(toDigits), site: lift.site_name, building: lift.building });
 
+    // Log inbound SMS message to messages table
+    await query(
+      `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, meta)
+       VALUES ($1, $2, 'in', 'sms', 'received', $3, $4)`,
+      [lift.id, toDigits, incoming, JSON.stringify({ sms_id: smsId })]
+    );
+    console.log('[sms/inbound] ✅ Logged inbound SMS to messages table');
+
     // Create ticket for this emergency with timer started
     const ticketResult = await query(
       `INSERT INTO tickets (lift_id, sms_id, status, notes, reminder_count, last_reminder_at)
@@ -635,6 +674,19 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
             } catch (msgErr) {
               console.error(`[inbound] Failed to save message to ticket_messages:`, msgErr);
             }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `Emergency alert: ${lift.site_name || 'Site'} - ${lift.building || 'Lift'}. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [lift.id, to, messageBody, messageId, JSON.stringify({ template: tplName, ticket_id: ticket.id })]
+              );
+              console.log(`[inbound] ✅ Logged outbound WhatsApp template to messages table`);
+            } catch (logErr) {
+              console.error(`[inbound] Failed to log message to messages table:`, logErr);
+            }
           }
           
           logEvent('wa_template_ok', { 
@@ -700,7 +752,7 @@ app.post("/sms/inbound", express.raw({ type: "*/*" }), async (req, res) => {
 });
 
 // Helper function to send message to all contacts for a lift
-async function notifyAllContactsForLift(liftId, message) {
+async function notifyAllContactsForLift(liftId, message, ticketId = null) {
   try {
     const contactsResult = await query(
       `SELECT c.primary_msisdn, c.display_name 
@@ -713,12 +765,28 @@ async function notifyAllContactsForLift(liftId, message) {
     const results = [];
     for (const contact of contactsResult.rows) {
       try {
-        await sendTextViaBridge({
+        const response = await sendTextViaBridge({
           baseUrl: BRIDGE_BASE_URL,
           apiKey: BRIDGE_API_KEY,
           to: contact.primary_msisdn,
           text: message
         });
+        
+        // Log to messages table for observability
+        const waId = response?.wa_id || response?.id;
+        if (waId) {
+          try {
+            await query(
+              `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+               VALUES ($1, $2, 'out', 'whatsapp_text', 'sent', $3, $4, $5)`,
+              [liftId, contact.primary_msisdn, message, waId, JSON.stringify({ notification: true, ticket_id: ticketId })]
+            );
+            console.log(`[notify] ✅ Logged notification to messages table`);
+          } catch (logErr) {
+            console.error(`[notify] Failed to log message to messages table:`, logErr);
+          }
+        }
+        
         results.push({ name: contact.display_name, status: 'sent' });
         console.log(`[notify] Sent to ${contact.display_name} (${contact.primary_msisdn})`);
       } catch (err) {
@@ -832,6 +900,77 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         from: fromNumber, 
         payload: buttonPayload, 
         text: buttonText
+      });
+    } else if (message?.type === 'text' && message.text?.body) {
+      // Handle text message for chat system
+      const textMessage = message.text.body;
+      const fromNumber = message.from;
+      
+      console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
+      
+      // Find contact by WhatsApp number
+      const contactResult = await query(
+        'SELECT * FROM contacts WHERE primary_msisdn = $1',
+        [fromNumber]
+      );
+      
+      if (contactResult.rows.length === 0) {
+        console.log('[webhook/whatsapp] Contact not found for text message:', fromNumber);
+        return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
+      }
+      
+      const contact = contactResult.rows[0];
+      
+      // Find most recent open ticket for this contact
+      const ticketResult = await query(
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+         WHERE lc.contact_id = $1 
+           AND t.status = 'open'
+           AND t.created_at > NOW() - INTERVAL '6 hours'
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [contact.id]
+      );
+      
+      if (ticketResult.rows.length === 0) {
+        console.log('[webhook/whatsapp] No recent open ticket for contact:', contact.id);
+        return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_ticket' });
+      }
+      
+      const ticket = ticketResult.rows[0];
+      
+      // Save text message to chat_messages
+      await query(
+        `INSERT INTO chat_messages (ticket_id, from_number, to_number, message, direction, created_at)
+         VALUES ($1, $2, $3, $4, 'inbound', NOW())`,
+        [ticket.id, fromNumber, 'system', textMessage]
+      );
+      
+      console.log(`[webhook/whatsapp] Saved text message to ticket ${ticket.id}`);
+      
+      // Check if message contains "agent" keyword (case-insensitive)
+      if (textMessage.toLowerCase().includes('agent')) {
+        await query(
+          `UPDATE tickets SET agent_requested = true WHERE id = $1`,
+          [ticket.id]
+        );
+        console.log(`[webhook/whatsapp] Agent requested for ticket ${ticket.id}`);
+        
+        await query(
+          `INSERT INTO event_log (event_type, ticket_id, contact_id, metadata, created_at)
+           VALUES ($1, $2, $3, $4, NOW())`,
+          ['agent_requested', ticket.id, contact.id, JSON.stringify({ message: textMessage, from: contact.display_name })]
+        );
+      }
+      
+      return res.status(200).json({ 
+        status: 'ok', 
+        processed: true,
+        ticket_id: ticket.id,
+        message_saved: true
       });
     } else {
       const reason = !message ? 'no_message' : 'not_button';
@@ -1008,6 +1147,19 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
           } catch (msgErr) {
             console.error(`[webhook/whatsapp] Failed to save follow-up message to ticket_messages:`, msgErr);
           }
+          
+          // Also log to messages table for observability
+          try {
+            const messageBody = `Has the service provider been notified of the entrapment at ${ticket.lift_name}?`;
+            await query(
+              `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+               VALUES ($1, $2, 'out', 'whatsapp_interactive', 'sent', $3, $4, $5)`,
+              [ticket.lift_id, fromNumber, messageBody, followupMessageId, JSON.stringify({ session: true, ticket_id: ticket.id })]
+            );
+            console.log(`[webhook/whatsapp] ✅ Logged entrapment follow-up to messages table`);
+          } catch (logErr) {
+            console.error(`[webhook/whatsapp] Failed to log message to messages table:`, logErr);
+          }
         }
         
         // Update ticket to track that entrapment was clicked and start reminder timer
@@ -1085,7 +1237,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       // Send confirmation message to all contacts if required
       if (notifyAllContacts) {
         try {
-          const results = await notifyAllContactsForLift(ticket.lift_id, confirmationMessage);
+          const results = await notifyAllContactsForLift(ticket.lift_id, confirmationMessage, ticket.id);
           console.log('[webhook/whatsapp] Notified all contacts:', results);
         } catch (err) {
           console.error('[webhook/whatsapp] Failed to notify all contacts:', err);
@@ -1153,10 +1305,35 @@ app.post("/admin/ping-bridge", express.json(), async (req, res) => {
   }
 });
 
-// Latest inbound reader
-app.get("/api/inbound/latest", (_req, res) => {
-  if (!global.LAST_INBOUND) return res.status(404).json({ error: "no_inbound_yet" });
-  res.json(global.LAST_INBOUND);
+// Latest inbound reader (secured with AI auth)
+app.get("/api/inbound/latest", (req, res) => {
+  // Require authentication
+  const token = req.header('X-AI-Token') || 
+                req.header('X-Admin-Token') ||
+                req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  
+  const aiToken = process.env.AI_ASSISTANT_TOKEN;
+  const adminToken = process.env.ADMIN_TOKEN;
+  
+  if (!token || (token !== aiToken && token !== adminToken)) {
+    return res.status(401).json({ 
+      ok: false, 
+      error: 'Authentication required. Provide X-AI-Token or X-Admin-Token header.' 
+    });
+  }
+  
+  if (!global.LAST_INBOUND) {
+    return res.status(404).json({ 
+      ok: false, 
+      error: "no_inbound_yet",
+      message: "No inbound SMS has been received yet" 
+    });
+  }
+  
+  res.json({
+    ok: true,
+    data: global.LAST_INBOUND
+  });
 });
 
 // Ensure global buffer exists
@@ -1175,24 +1352,24 @@ async function processInitialAlertReminder(ticket) {
     await query(
       `UPDATE tickets 
        SET status = 'closed',
-           reminder_count = $1,
+           reminder_count = 3,
            resolved_at = now(),
            closure_note = 'Auto-closed: No response to emergency alert after 3 reminders',
            updated_at = now()
-       WHERE id = $2`,
-      [newCount, ticket.id]
+       WHERE id = $1`,
+      [ticket.id]
     );
     
     const ticketRef = ticket.ticket_reference || `TKT${ticket.id}`;
     const escalationMessage = `⚠️ CRITICAL ALERT: [${ticketRef}] Emergency ticket auto-closed for ${ticket.lift_name}. NO RESPONSE received after 3 reminders. IMMEDIATE ACTION REQUIRED.`;
     try {
-      await notifyAllContactsForLift(ticket.lift_id, escalationMessage);
+      await notifyAllContactsForLift(ticket.lift_id, escalationMessage, ticket.id);
       console.log(`[reminder] Initial alert ticket ${ticket.id} auto-closed, escalation sent`);
       
       logEvent('ticket_auto_closed_no_response', {
         ticket_id: ticket.id,
         lift_id: ticket.lift_id,
-        reminder_count: newCount
+        reminder_count: 3
       });
     } catch (err) {
       console.error(`[reminder] Failed to send escalation for ticket ${ticket.id}:`, err);
@@ -1242,6 +1419,19 @@ async function processInitialAlertReminder(ticket) {
               );
             } catch (msgErr) {
               console.error(`[reminder] Failed to save reminder message to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              const messageBody = `REMINDER ${newCount}/3: Emergency alert pending. Please respond: Test, Maintenance, or Entrapment?`;
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_template', 'sent', $3, $4, $5)`,
+                [ticket.lift_id, contact.primary_msisdn, messageBody, reminderMessageId, JSON.stringify({ reminder: newCount, template: BRIDGE_TEMPLATE_NAME, ticket_id: ticket.id })]
+              );
+              console.log(`[reminder] ✅ Logged reminder to messages table`);
+            } catch (logErr) {
+              console.error(`[reminder] Failed to log message to messages table:`, logErr);
             }
           }
           
@@ -1333,23 +1523,23 @@ async function checkPendingReminders() {
         await query(
           `UPDATE tickets 
            SET status = 'closed',
-               reminder_count = $1,
+               reminder_count = 3,
                resolved_at = now(),
                closure_note = 'Auto-closed: Service provider notification not confirmed after 3 reminders',
                updated_at = now()
-           WHERE id = $2`,
-          [newCount, ticket.id]
+           WHERE id = $1`,
+          [ticket.id]
         );
         
         const finalMessage = `⚠️ ALERT: Ticket auto-closed for ${ticket.lift_name}. Service provider notification was NOT confirmed after 3 reminders. Please follow up immediately.`;
         try {
-          await notifyAllContactsForLift(ticket.lift_id, finalMessage);
+          await notifyAllContactsForLift(ticket.lift_id, finalMessage, ticket.id);
           console.log(`[reminder] Ticket ${ticket.id} auto-closed, all contacts notified`);
           
           logEvent('ticket_auto_closed', {
             ticket_id: ticket.id,
             lift_id: ticket.lift_id,
-            reminder_count: newCount
+            reminder_count: 3
           });
         } catch (err) {
           console.error(`[reminder] Failed to notify contacts for ticket ${ticket.id}:`, err);
@@ -1379,6 +1569,18 @@ async function checkPendingReminders() {
               );
             } catch (msgErr) {
               console.error(`[reminder] Failed to save entrapment reminder to ticket_messages:`, msgErr);
+            }
+            
+            // Also log to messages table for observability
+            try {
+              await query(
+                `INSERT INTO messages (lift_id, msisdn, direction, type, status, body, wa_id, meta)
+                 VALUES ($1, $2, 'out', 'whatsapp_interactive', 'sent', $3, $4, $5)`,
+                [ticket.lift_id, ticket.primary_msisdn, reminderMessage, entrapmentReminderMsgId, JSON.stringify({ session: true, reminder: newCount, ticket_id: ticket.id })]
+              );
+              console.log(`[reminder] ✅ Logged entrapment reminder to messages table`);
+            } catch (logErr) {
+              console.error(`[reminder] Failed to log message to messages table:`, logErr);
             }
           }
           
