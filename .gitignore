@@ -60,3 +60,31 @@ jspm_packages/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Security - Prevent secret leaks
+*SECRET*.txt
+*TOKEN*.txt
+*CREDENTIALS*.txt
+*PASSWORD*.txt
+*PRIVATE*.txt
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+secrets.json
+config.local.*
+
+# Local documentation with real values
+*_LOCAL.txt
+*_ACTUAL.txt
+*_REAL.txt
+SECRETS_*
+TOKENS_*
+
+# Backup files that might contain secrets
+*.backup
+*.bak
+*~
+*.swp
