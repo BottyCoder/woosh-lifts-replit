@@ -839,29 +839,34 @@ app.get('/webhooks/whatsapp', (req, res) => {
 // WhatsApp webhook for button clicks (POST request)
 app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
   try {
-    // Validate Authorization header
-    const expectedToken = process.env.WEBHOOK_AUTH_TOKEN;
-    const authHeader = req.headers.authorization;
+    // Check if webhook is from Meta (direct integration)
+    const userAgent = req.get('user-agent') || '';
+    const isMetaWebhook = userAgent.includes('facebookexternalua');
     
-    if (expectedToken) {
-      const providedToken = authHeader?.replace(/^Bearer\s+/i, '');
+    // For Meta webhooks, skip auth check (Meta doesn't send Authorization header)
+    if (!isMetaWebhook) {
+      // Validate Authorization header for non-Meta webhooks
+      const expectedToken = process.env.WEBHOOK_AUTH_TOKEN;
+      const authHeader = req.headers.authorization;
       
-      if (!providedToken || providedToken !== expectedToken) {
-        console.error('[webhook/whatsapp] ⚠️ SECURITY: Authentication failed - rejecting webhook');
-        await logEvent('webhook_auth_failed', { 
-          headerProvided: !!authHeader,
-          from: req.ip,
-          userAgent: req.get('user-agent')
-        });
-        return res.status(401).json({ status: 'error', error: 'Unauthorized' });
+      if (expectedToken) {
+        const providedToken = authHeader?.replace(/^Bearer\s+/i, '');
+        
+        if (!providedToken || providedToken !== expectedToken) {
+          console.error('[webhook/whatsapp] ⚠️ SECURITY: Authentication failed - rejecting webhook');
+          await logEvent('webhook_auth_failed', { 
+            headerProvided: !!authHeader,
+            from: req.ip,
+            userAgent: userAgent
+          });
+          return res.status(401).json({ status: 'error', error: 'Unauthorized' });
+        }
+        console.log('[webhook/whatsapp] ✅ Authentication successful (Bearer token)');
+      } else {
+        console.log('[webhook/whatsapp] ⚠️ No WEBHOOK_AUTH_TOKEN configured - accepting non-Meta webhook');
       }
-      console.log('[webhook/whatsapp] ✅ Authentication successful');
     } else {
-      console.error('[webhook/whatsapp] ⚠️ SECURITY WARNING: No WEBHOOK_AUTH_TOKEN configured - accepting unauthenticated request. Set WEBHOOK_AUTH_TOKEN in production!');
-      await logEvent('webhook_no_auth_configured', { 
-        from: req.ip,
-        warning: 'Production security risk'
-      });
+      console.log('[webhook/whatsapp] ✅ Meta webhook detected - skipping auth check');
     }
     
     console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
