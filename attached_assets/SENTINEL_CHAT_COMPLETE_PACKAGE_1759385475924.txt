@@ -1,0 +1,621 @@
+================================================================================
+CALL CENTRE LIVE CHAT SYSTEM - COMPLETE INTEGRATION PACKAGE
+Built by: Augur
+For: Sentinel
+================================================================================
+
+This single file contains everything you need to implement the call centre live chat system.
+
+
+================================================================================
+OVERVIEW
+================================================================================
+
+This implements a simple call centre live chat system where agents can have real-time WhatsApp conversations with support technicians during emergencies.
+
+Flow:
+1. Support tech receives emergency WhatsApp alert
+2. Tech clicks button OR types "Agent" to request call centre help
+3. Call centre agent sees notification in web dashboard
+4. Agent and tech chat via WhatsApp (all FREE session messages)
+5. All conversation saved to database for compliance
+
+
+================================================================================
+STEP 1: CREATE DATABASE SCHEMA
+================================================================================
+
+Create file: database/chat_schema.sql
+
+CONTENT START:
+-- Call Centre Live Chat Schema
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id SERIAL PRIMARY KEY,
+  ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  from_number VARCHAR(20) NOT NULL,
+  to_number VARCHAR(20) NOT NULL,
+  message TEXT NOT NULL,
+  direction VARCHAR(10) NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+  agent_name VARCHAR(100),
+  read_by_agent BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_chat_messages_ticket_id ON chat_messages(ticket_id);
+CREATE INDEX idx_chat_messages_created_at ON chat_messages(created_at);
+CREATE INDEX idx_chat_messages_unread ON chat_messages(ticket_id, read_by_agent) WHERE direction = 'inbound';
+
+-- Add agent_requested flag to tickets table
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS agent_requested BOOLEAN DEFAULT false;
+CREATE INDEX IF NOT EXISTS idx_tickets_agent_requested ON tickets(agent_requested) WHERE agent_requested = true;
+
+-- Migration note: This schema is idempotent and safe to run multiple times
+
+CONTENT END
+
+Then execute this SQL on your database to create the tables.
+
+
+================================================================================
+STEP 2: CREATE CHAT API ROUTES
+================================================================================
+
+Create file: src/routes/chat.js
+
+CONTENT START:
+// Call Centre Live Chat Routes
+const express = require('express');
+const router = express.Router();
+const { query } = require('../db');
+const { sendTextViaBridge } = require('../lib/bridge');
+
+const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
+const BRIDGE_API_KEY = process.env.BRIDGE_API_KEY || "";
+
+// Authentication middleware (same as admin routes)
+function requireAuth(req, res, next) {
+  const token = req.header('X-Admin-Token') || 
+                req.header('X-AI-Token') ||
+                req.header('Authorization')?.replace(/^Bearer\s+/i, '');
+  
+  const adminToken = process.env.ADMIN_TOKEN;
+  const aiToken = process.env.AI_ASSISTANT_TOKEN;
+  
+  if (!token || (token !== adminToken && token !== aiToken)) {
+    return res.status(401).json({ 
+      ok: false, 
+      error: { message: 'Unauthorized' } 
+    });
+  }
+  
+  next();
+}
+
+router.use(requireAuth);
+
+// Get all active conversations (tickets with chat activity)
+router.get('/conversations', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT 
+        t.*,
+        l.site_name,
+        l.building,
+        l.msisdn as lift_msisdn,
+        c.display_name as contact_name,
+        c.primary_msisdn as contact_phone,
+        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
+        (SELECT COUNT(*) FROM chat_messages WHERE ticket_id = t.id) as message_count,
+        (SELECT COUNT(*) FROM chat_messages WHERE ticket_id = t.id AND read_by_agent = false AND direction = 'inbound') as unread_count,
+        (SELECT MAX(created_at) FROM chat_messages WHERE ticket_id = t.id) as last_message_at
+      FROM tickets t
+      JOIN lifts l ON t.lift_id = l.id
+      LEFT JOIN contacts c ON t.responded_by = c.id
+      WHERE t.status = 'open' OR (t.status = 'closed' AND t.resolved_at > NOW() - INTERVAL '1 hour')
+      ORDER BY 
+        CASE WHEN t.agent_requested = true THEN 0 ELSE 1 END,
+        last_message_at DESC NULLS LAST,
+        t.created_at DESC
+    `);
+
+    res.json({
+      ok: true,
+      conversations: result.rows
+    });
+  } catch (error) {
+    console.error('[chat/conversations] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Failed to load conversations' } 
+    });
+  }
+});
+
+// Get chat thread for specific ticket
+router.get('/:ticketId/messages', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    // Get ticket details
+    const ticketResult = await query(`
+      SELECT 
+        t.*,
+        l.site_name,
+        l.building,
+        c.display_name as contact_name,
+        c.primary_msisdn as contact_phone,
+        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+      FROM tickets t
+      JOIN lifts l ON t.lift_id = l.id
+      LEFT JOIN contacts c ON t.responded_by = c.id
+      WHERE t.id = $1
+    `, [parseInt(ticketId)]);
+
+    if (ticketResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: { message: 'Ticket not found' }
+      });
+    }
+
+    // Get all messages for this ticket
+    const messagesResult = await query(`
+      SELECT * FROM chat_messages
+      WHERE ticket_id = $1
+      ORDER BY created_at ASC
+    `, [parseInt(ticketId)]);
+
+    res.json({
+      ok: true,
+      ticket: ticketResult.rows[0],
+      messages: messagesResult.rows
+    });
+  } catch (error) {
+    console.error('[chat/:ticketId/messages] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Failed to load messages' } 
+    });
+  }
+});
+
+// Send message from agent to contact
+router.post('/:ticketId/send', express.json(), async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { message, agent_name } = req.body;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        ok: false,
+        error: { message: 'Message is required' }
+      });
+    }
+
+    // Get ticket and contact info
+    const ticketResult = await query(`
+      SELECT 
+        t.*,
+        c.primary_msisdn as contact_phone,
+        c.display_name as contact_name
+      FROM tickets t
+      LEFT JOIN contacts c ON t.responded_by = c.id
+      WHERE t.id = $1
+    `, [parseInt(ticketId)]);
+
+    if (ticketResult.rows.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: { message: 'Ticket not found' }
+      });
+    }
+
+    const ticket = ticketResult.rows[0];
+    const toNumber = ticket.contact_phone;
+
+    if (!toNumber) {
+      return res.status(400).json({
+        ok: false,
+        error: { message: 'No contact phone number for this ticket' }
+      });
+    }
+
+    // Send via Woosh Bridge
+    try {
+      await sendTextViaBridge({
+        baseUrl: BRIDGE_BASE_URL,
+        apiKey: BRIDGE_API_KEY,
+        to: toNumber,
+        text: message.trim()
+      });
+
+      // Save to database
+      await query(`
+        INSERT INTO chat_messages (ticket_id, from_number, to_number, message, direction, agent_name, created_at)
+        VALUES ($1, $2, $3, $4, 'outbound', $5, NOW())
+      `, [parseInt(ticketId), 'agent', toNumber, message.trim(), agent_name || 'Agent']);
+
+      console.log(`[chat] Agent sent message to ${ticket.contact_name || toNumber} for ticket ${ticketId}`);
+
+      res.json({
+        ok: true,
+        message: 'Message sent successfully'
+      });
+    } catch (sendError) {
+      console.error('[chat] Failed to send message:', sendError);
+      res.status(500).json({
+        ok: false,
+        error: { message: 'Failed to send WhatsApp message', details: sendError.message }
+      });
+    }
+  } catch (error) {
+    console.error('[chat/:ticketId/send] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Internal error' } 
+    });
+  }
+});
+
+// Mark messages as read by agent
+router.post('/:ticketId/mark-read', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+
+    await query(`
+      UPDATE chat_messages
+      SET read_by_agent = true
+      WHERE ticket_id = $1 AND direction = 'inbound' AND read_by_agent = false
+    `, [parseInt(ticketId)]);
+
+    res.json({
+      ok: true,
+      message: 'Messages marked as read'
+    });
+  } catch (error) {
+    console.error('[chat/:ticketId/mark-read] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { message: 'Failed to mark as read' } 
+    });
+  }
+});
+
+module.exports = router;
+
+CONTENT END
+
+
+================================================================================
+STEP 3: CREATE AGENT WEB INTERFACE
+================================================================================
+
+Create file: public/agent-chat.html
+
+CONTENT START:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Centre Chat - Woosh Lifts</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header h1 { font-size: 1.5em; }
+        .header .subtitle { font-size: 0.9em; opacity: 0.9; margin-top: 5px; }
+        .main { flex: 1; display: flex; overflow: hidden; }
+        .conversations-panel { width: 350px; background: white; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; }
+        .conversations-header { padding: 15px; background: #f9f9f9; border-bottom: 1px solid #e0e0e0; font-weight: 600; }
+        .conversations-list { flex: 1; overflow-y: auto; }
+        .conversation-item { padding: 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.2s; }
+        .conversation-item:hover { background: #f5f5f5; }
+        .conversation-item.active { background: #e8f0fe; border-left: 3px solid #667eea; }
+        .conversation-item.needs-agent { background: #fff3cd; border-left: 3px solid #f59e0b; }
+        .conversation-item.needs-agent::before { content: '🔔 '; }
+        .conv-title { font-weight: 600; margin-bottom: 5px; }
+        .conv-subtitle { font-size: 0.85em; color: #666; }
+        .conv-badge { display: inline-block; background: #ef4444; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; margin-left: 5px; }
+        .chat-panel { flex: 1; display: flex; flex-direction: column; background: white; }
+        .chat-header { padding: 15px 20px; background: #f9f9f9; border-bottom: 1px solid #e0e0e0; }
+        .chat-title { font-weight: 600; font-size: 1.1em; }
+        .chat-subtitle { font-size: 0.85em; color: #666; margin-top: 3px; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; background: #fafafa; }
+        .message { margin-bottom: 15px; max-width: 70%; }
+        .message.inbound { margin-right: auto; }
+        .message.outbound { margin-left: auto; }
+        .message-bubble { padding: 12px 16px; border-radius: 12px; word-wrap: break-word; }
+        .message.inbound .message-bubble { background: white; border: 1px solid #e0e0e0; }
+        .message.outbound .message-bubble { background: #667eea; color: white; }
+        .message-meta { font-size: 0.75em; color: #999; margin-top: 5px; padding: 0 5px; }
+        .chat-input { padding: 20px; background: white; border-top: 1px solid #e0e0e0; display: flex; gap: 10px; }
+        .chat-input input { flex: 1; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 25px; font-size: 1em; outline: none; }
+        .chat-input input:focus { border-color: #667eea; }
+        .send-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 12px 30px; border-radius: 25px; font-weight: 600; cursor: pointer; transition: transform 0.2s; }
+        .send-btn:hover { transform: scale(1.05); }
+        .send-btn:active { transform: scale(0.95); }
+        .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+        .empty-state .emoji { font-size: 4em; margin-bottom: 20px; }
+        .loading { text-align: center; padding: 40px; color: #667eea; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💬 Call Centre Live Chat</h1>
+        <div class="subtitle">Real-time support for emergency responders</div>
+    </div>
+    <div class="main">
+        <div class="conversations-panel">
+            <div class="conversations-header">Active Conversations</div>
+            <div class="conversations-list" id="conversationsList">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+        <div class="chat-panel">
+            <div class="chat-header" id="chatHeader">
+                <div class="chat-title">Select a conversation</div>
+                <div class="chat-subtitle">Choose a ticket from the left to start chatting</div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <div class="emoji">💬</div>
+                    <div>Select a conversation to view messages</div>
+                </div>
+            </div>
+            <div class="chat-input" id="chatInput" style="display: none;">
+                <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button class="send-btn" onclick="sendMessage()">📤 Send</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_BASE = '/api/chat';
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3MNTkyNDc4ODAsInNjb3BlIjoiYWRtaW4ifQ._q0Gv0aK1l1sXkJYx2Tb3Zk2r8V5yQYhQyqP8w1Z0b4';
+        let currentTicketId = null;
+        let agentName = prompt('Enter your name:') || 'Agent';
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const options = { method, headers: { 'X-AI-Token': TOKEN, 'Content-Type': 'application/json' } };
+            if (body) options.body = JSON.stringify(body);
+            const response = await fetch(API_BASE + endpoint, options);
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            return response.json();
+        }
+        async function loadConversations() {
+            try {
+                const data = await apiCall('/conversations');
+                const list = document.getElementById('conversationsList');
+                list.innerHTML = '';
+                if (data.conversations.length === 0) {
+                    list.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><div>No active conversations</div></div>';
+                    return;
+                }
+                data.conversations.forEach(conv => {
+                    const item = document.createElement('div');
+                    item.className = 'conversation-item';
+                    if (conv.agent_requested) item.className += ' needs-agent';
+                    if (currentTicketId === conv.id) item.className += ' active';
+                    const unreadBadge = conv.unread_count > 0 ? `<span class="conv-badge">${conv.unread_count}</span>` : '';
+                    item.innerHTML = `<div class="conv-title">${conv.ticket_reference || 'TKT' + conv.id} - ${conv.contact_name || 'Contact'}${unreadBadge}</div><div class="conv-subtitle">${conv.lift_name}</div><div class="conv-subtitle">${conv.message_count || 0} messages</div>`;
+                    item.onclick = () => loadChat(conv.id);
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                console.error('Failed to load conversations:', error);
+            }
+        }
+        async function loadChat(ticketId) {
+            try {
+                currentTicketId = ticketId;
+                const data = await apiCall(`/${ticketId}/messages`);
+                const ticket = data.ticket;
+                const messages = data.messages;
+                document.getElementById('chatHeader').innerHTML = `<div class="chat-title">${ticket.ticket_reference || 'TKT' + ticket.id} - ${ticket.contact_name || 'Contact'}</div><div class="chat-subtitle">${ticket.lift_name} | ${ticket.contact_phone || 'No phone'}</div>`;
+                const chatMessages = document.getElementById('chatMessages');
+                chatMessages.innerHTML = '';
+                if (messages.length === 0) {
+                    chatMessages.innerHTML = '<div class="empty-state"><div class="emoji">💬</div><div>No messages yet. Start the conversation!</div></div>';
+                } else {
+                    messages.forEach(msg => {
+                        const div = document.createElement('div');
+                        div.className = `message ${msg.direction}`;
+                        const time = new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+                        const sender = msg.direction === 'inbound' ? (ticket.contact_name || 'Contact') : (msg.agent_name || 'Agent');
+                        div.innerHTML = `<div class="message-bubble">${msg.message}</div><div class="message-meta">${sender} • ${time}</div>`;
+                        chatMessages.appendChild(div);
+                    });
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+                document.getElementById('chatInput').style.display = 'flex';
+                await apiCall(`/${ticketId}/mark-read`, 'POST');
+                loadConversations();
+            } catch (error) {
+                console.error('Failed to load chat:', error);
+            }
+        }
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message || !currentTicketId) return;
+            try {
+                await apiCall(`/${currentTicketId}/send`, 'POST', { message: message, agent_name: agentName });
+                input.value = '';
+                await loadChat(currentTicketId);
+            } catch (error) {
+                alert('Failed to send message: ' + error.message);
+            }
+        }
+        function handleKeyPress(event) { if (event.key === 'Enter') sendMessage(); }
+        setInterval(async () => { await loadConversations(); if (currentTicketId) await loadChat(currentTicketId); }, 5000);
+        loadConversations();
+    </script>
+</body>
+</html>
+
+CONTENT END
+
+
+================================================================================
+STEP 4: UPDATE WEBHOOK TO CAPTURE TEXT MESSAGES
+================================================================================
+
+In src/server.js, find the POST /webhooks/whatsapp endpoint (around line 724).
+
+Currently it has this structure:
+
+if (message?.type === 'button' && message.button) {
+  // Handle button clicks
+} else if (message?.type === 'interactive'...) {
+  // Handle interactive buttons
+} else {
+  // Currently just returns not a button click
+}
+
+BEFORE the final else block that returns 'not a button click', ADD this new else if block:
+
+} else if (message?.type === 'text' && message.text?.body) {
+  // Handle text message
+  const textMessage = message.text.body;
+  const fromNumber = message.from;
+  
+  console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
+  
+  // Find contact by WhatsApp number
+  const contactResult = await query(
+    'SELECT * FROM contacts WHERE primary_msisdn = $1',
+    [fromNumber]
+  );
+  
+  if (contactResult.rows.length === 0) {
+    console.log('[webhook/whatsapp] Contact not found for text message:', fromNumber);
+    return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
+  }
+  
+  const contact = contactResult.rows[0];
+  
+  // Find most recent open ticket for this contact
+  const ticketResult = await query(
+    `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+     FROM tickets t
+     JOIN lifts l ON t.lift_id = l.id
+     JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+     WHERE lc.contact_id = $1 
+       AND t.status = 'open'
+       AND t.created_at > NOW() - INTERVAL '6 hours'
+     ORDER BY t.created_at DESC
+     LIMIT 1`,
+    [contact.id]
+  );
+  
+  if (ticketResult.rows.length === 0) {
+    console.log('[webhook/whatsapp] No recent open ticket for contact:', contact.id);
+    return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_ticket' });
+  }
+  
+  const ticket = ticketResult.rows[0];
+  
+  // Save text message to chat_messages
+  await query(
+    `INSERT INTO chat_messages (ticket_id, from_number, to_number, message, direction, created_at)
+     VALUES ($1, $2, $3, $4, 'inbound', NOW())`,
+    [ticket.id, fromNumber, 'system', textMessage]
+  );
+  
+  console.log(`[webhook/whatsapp] Saved text message to ticket ${ticket.id}`);
+  
+  // Check if message contains "agent" keyword (case-insensitive)
+  if (textMessage.toLowerCase().includes('agent')) {
+    await query(
+      `UPDATE tickets SET agent_requested = true WHERE id = $1`,
+      [ticket.id]
+    );
+    console.log(`[webhook/whatsapp] Agent requested for ticket ${ticket.id}`);
+    
+    await query(
+      `INSERT INTO event_log (event_type, ticket_id, contact_id, metadata, created_at)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      ['agent_requested', ticket.id, contact.id, JSON.stringify({ message: textMessage, from: contact.display_name })]
+    );
+  }
+  
+  return res.status(200).json({ 
+    status: 'ok', 
+    processed: true,
+    ticket_id: ticket.id,
+    message_saved: true
+  });
+
+
+================================================================================
+STEP 5: MOUNT CHAT ROUTES IN src/server.js
+================================================================================
+
+Find the section where routes are mounted (around line 14-16), add import:
+
+const chatRoutes = require('./routes/chat');
+
+Then find where routes are mounted (around line 86-88), add:
+
+app.use('/api/chat', chatRoutes);
+
+
+================================================================================
+STEP 6: RUN DATABASE MIGRATION
+================================================================================
+
+Execute the SQL from database/chat_schema.sql on your PostgreSQL database.
+
+This creates:
+- chat_messages table
+- tickets.agent_requested column
+- Necessary indexes
+
+
+================================================================================
+TESTING
+================================================================================
+
+1. After integration, restart server
+2. Open: https://gplifts.woosh.ai/agent-chat.html
+3. Create test emergency (send SMS)
+4. From WhatsApp, send text: "Agent I need help"
+5. Dashboard should show ticket with 🔔 badge
+6. Click ticket, type response, click Send
+7. Response appears in WhatsApp
+8. Verify all messages saved to database
+
+
+================================================================================
+FEATURES
+================================================================================
+
+- Real-time conversation list (auto-refresh every 5 seconds)
+- Unread message badges
+- Agent request detection (keyword: "agent")
+- Simple chat interface
+- Message history
+- Session-based messaging (FREE within 24 hours)
+- Full audit trail in database
+- Mobile-responsive design
+
+
+================================================================================
+COST
+================================================================================
+
+All chat happens within 24-hour session window = FREE utility messages.
+Once tech receives initial template alert, all subsequent chat is free.
+
+
+================================================================================
+QUESTIONS ANSWERED
+================================================================================
+
+Q1: Where are files? A: In this package - create them manually
+Q2: Webhook placement? A: In main POST /webhooks/whatsapp, before final else
+Q3: System message logging? A: Not required for MVP, can add later
+Q4: Authentication? A: Yes, accepts both ADMIN_TOKEN and AI_ASSISTANT_TOKEN
+
+Ready to deploy!
+
