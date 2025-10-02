@@ -308,7 +308,7 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-tenant-key": `${BRIDGE_API_KEY}`
+      "X-API-Key": `${BRIDGE_API_KEY}`
     },
     body: JSON.stringify(payload),
     timeout: 10_000
@@ -1287,7 +1287,7 @@ app.post("/admin/ping-bridge", express.json(), async (req, res) => {
       method: "POST",
       headers: { 
         "Content-Type": "application/json", 
-        "x-tenant-key": BRIDGE_API_KEY 
+        "X-API-Key": BRIDGE_API_KEY 
       },
       body: JSON.stringify({ to, text })
     });
