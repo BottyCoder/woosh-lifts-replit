@@ -76,9 +76,11 @@
     </div>
     <script>
         const API_BASE = '/api/chat';
-        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3MDU5MjQ3ODgsInNjb3BlIjoiYWRtaW4ifQ._q0Gv0aK1l1sXkJYx2Tb3Zk2r8V5yQYhQyqP8w1Z0b4';
+        const TOKEN = localStorage.getItem('admin_token') || prompt('Enter your admin token:');
+        if (TOKEN) localStorage.setItem('admin_token', TOKEN);
         let currentTicketId = null;
-        let agentName = prompt('Enter your name:') || 'Agent';
+        let agentName = localStorage.getItem('agent_name') || prompt('Enter your name:') || 'Agent';
+        if (agentName) localStorage.setItem('agent_name', agentName);
 
         async function apiCall(endpoint, method = 'GET', body = null) {
             const options = { 
