@@ -92,7 +92,11 @@
             };
             if (body) options.body = JSON.stringify(body);
             const response = await fetch(API_BASE + endpoint, options);
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.error?.message || `API Error ${response.status}`;
+                throw new Error(errorMessage);
+            }
             return response.json();
         }
 
