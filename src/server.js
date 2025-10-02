@@ -290,25 +290,35 @@ function normalize(body = {}) {
 
 // Template sender
 async function sendTemplateRaw({ to, name, langCode, paramText }) {
+  // Direct Meta Graph API integration
+  const phoneNumberId = process.env.META_PHONE_NUMBER_ID || "861610750363214";
+  const accessToken = process.env.META_ACCESS_TOKEN;
+  
   const payload = {
-    to,
+    messaging_product: "whatsapp",
+    to: to,
     type: "template",
     template: {
-      name,
-      language: { code: langCode },
-      components: [
-        {
-          type: "body",
-          parameters: [{ type: "text", text: paramText }]
-        }
-      ]
+      name: name,
+      language: { code: langCode }
     }
   };
-  const resp = await fetch(`${BRIDGE_BASE_URL.replace(/\/+$/,'')}/v1/send`, {
+  
+  // Add parameters if provided
+  if (paramText) {
+    payload.template.components = [
+      {
+        type: "body",
+        parameters: [{ type: "text", text: paramText }]
+      }
+    ];
+  }
+  
+  const resp = await fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Api-Key": `${BRIDGE_API_KEY}`
+      "Authorization": `Bearer ${accessToken}`
     },
     body: JSON.stringify(payload),
     timeout: 10_000
@@ -317,12 +327,22 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
   let body;
   try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
   if (!resp.ok) {
-    const err = new Error("bridge_template_error");
+    const err = new Error("meta_template_error");
     err.status = resp.status;
     err.body = body;
     throw err;
   }
-  return body;
+  
+  // Transform Meta response to match expected format
+  // Meta returns: { messages: [{ id: "wamid..." }] }
+  // We need: { wa_id: "wamid..." } for compatibility
+  const waId = body?.messages?.[0]?.id;
+  return {
+    ok: true,
+    wa_id: waId,
+    id: waId,
+    graph: body
+  };
 }
 
 // Direct SMS route
