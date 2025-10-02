@@ -7,7 +7,7 @@ async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode =
     err.code = "auth";
     throw err;
   }
-  const url = `${baseUrl.replace(/\/+$/,"")}/v1/send`;
+  const url = `${baseUrl.replace(/\/+$/,"")}/api/messages/send`;
   const template = { name, language: { code: languageCode } };
   if (components) template.components = components;
 
@@ -18,7 +18,7 @@ async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode =
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
       body: JSON.stringify({ to, type: "template", template }),
       signal: controller.signal,
     });

@@ -304,11 +304,11 @@ async function sendTemplateRaw({ to, name, langCode, paramText }) {
       ]
     }
   };
-  const resp = await fetch(`${BRIDGE_BASE_URL.replace(/\/+$/,'')}/v1/send`, {
+  const resp = await fetch(`${BRIDGE_BASE_URL.replace(/\/+$/,'')}/api/messages/send`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": `${BRIDGE_API_KEY}`
+      "X-Api-Key": `${BRIDGE_API_KEY}`
     },
     body: JSON.stringify(payload),
     timeout: 10_000
