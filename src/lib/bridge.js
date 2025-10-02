@@ -18,7 +18,7 @@ async function sendTemplateViaBridge({ baseUrl, apiKey, to, name, languageCode =
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-tenant-key": apiKey },
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
       body: JSON.stringify({ to, type: "template", template }),
       signal: controller.signal,
     });
@@ -61,7 +61,7 @@ async function sendTextViaBridge({ baseUrl, apiKey, to, text }) {
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-tenant-key": apiKey },
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
       body: JSON.stringify({ to, text }),
       signal: controller.signal,
     });
