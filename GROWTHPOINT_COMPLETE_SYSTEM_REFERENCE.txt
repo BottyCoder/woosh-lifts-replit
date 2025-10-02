@@ -94,7 +94,7 @@ Response should be: {"success": true}
 GRAPH API VERSION: v23.0
 
 ACCESS TOKEN (System User Token):
-Token: EAALmIlR8GkQBPZA3LvdlFTa1yk4VaLm7ExzCvZAeZAvTmiS3ysbZC0ONKTozj2YOkjM0Rmo447FLKhNsRmFZAxjGsIvnXYgZBRla7f49KFS74MQBkyux98GEjmlkFCAooLL3snBA79ZAUS3ceM6uEq4GxLGi5yHRxTID67ZCZAFZBUkFmkhf3222btH2RZBOhWs4oihSQZDZD
+Token: [REDACTED - Stored in Replit Secrets as META_ACCESS_TOKEN]
 Type: System User Token (long-lived)
 Permissions Required:
   - whatsapp_business_messaging
@@ -212,7 +212,7 @@ Body:
 CRITICAL SECRETS (Must be set in Replit Secrets panel):
 
 META_ACCESS_TOKEN
-  Value: EAALmIlR8GkQBPZA3LvdlFTa1yk4VaLm7ExzCvZAeZAvTmiS3ysbZC0ONKTozj2YOkjM0Rmo447FLKhNsRmFZAxjGsIvnXYgZBRla7f49KFS74MQBkyux98GEjmlkFCAooLL3snBA79ZAUS3ceM6uEq4GxLGi5yHRxTID67ZCZAFZBUkFmkhf3222btH2RZBOhWs4oihSQZDZD
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: Authenticate with Meta Graph API for sending messages
   Used By: src/server.js, src/lib/bridge.js
 
@@ -222,22 +222,22 @@ META_PHONE_NUMBER_ID
   Default: Hardcoded in code, can override via env var
   
 DATABASE_URL
-  Value: postgresql://neondb_owner:npg_qIS8n3GgXzMK@ep-noisy-star-a5qe9xkm.us-east-2.aws.neon.tech/neondb?sslmode=require
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: PostgreSQL database connection
   Provider: Neon.tech
 
 ADMIN_TOKEN
-  Value: 3b8702920bd3cd67a9907badb05ad9751c74009fe18df9802b750dbd1302e741
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: Admin API authentication
   Used For: Admin dashboard, full system access
 
 AI_ASSISTANT_TOKEN
-  Value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3MNTkyNDc4ODAsInNjb3BlIjoiYWRtaW4ifQ._q0Gv0aK1l1sXkJYx2Tb3Zk2r8V5yQYhQyqP8w1Z0b4
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: AI troubleshooting API (Augur access)
   Used For: Read-only diagnostics, log viewing
 
 WEBHOOK_VERIFY_TOKEN
-  Value: 4d8d0f67a548eda1bf967da6d26fd0cecde4ec2a4061dba303a268a1096015e7
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: Meta webhook verification (GET requests)
   Used For: Initial webhook setup handshake
 
@@ -256,7 +256,7 @@ BRIDGE_TEMPLATE_LANG
   Purpose: Default template language
 
 BRIDGE_API_KEY
-  Value: c991fd90-d50d-4b44-9228-b4dd78e47162
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Status: LEGACY - Not used for primary flow
   Note: Kept for compatibility, not used in production flow
 
@@ -265,7 +265,7 @@ BRIDGE_BASE_URL
   Status: LEGACY - Not used for primary flow
 
 SESSION_SECRET
-  Value: ypIbdKKPcxlmNKNtieyKCa2hIfiHiyC9a03SW8hI2EfjRxBHye8mkuO78RJ3TkDuyQy2smxq/+8lIhGnRh5wOA==
+  Value: [STORED IN REPLIT SECRETS - DO NOT COMMIT]
   Purpose: Session management
 
 DATABASE CREDENTIALS (Individual - for direct connection):
@@ -273,7 +273,7 @@ PGDATABASE: neondb
 PGHOST: ep-noisy-star-a5qe9xkm.us-east-2.aws.neon.tech
 PGPORT: 5432
 PGUSER: neondb_owner
-PGPASSWORD: npg_qIS8n3GgXzMK
+PGPASSWORD: [STORED IN REPLIT SECRETS]
 
 ================================================================================
 5. MESSAGE FLOW ARCHITECTURE
