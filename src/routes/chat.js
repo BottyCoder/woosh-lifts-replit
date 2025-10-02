@@ -132,11 +132,9 @@ router.post('/:ticketId/send', express.json(), async (req, res) => {
       SELECT 
         t.*,
         c.primary_msisdn as contact_phone,
-        c.display_name as contact_name,
-        l.msisdn as lift_phone
+        c.display_name as contact_name
       FROM tickets t
       LEFT JOIN contacts c ON t.responded_by = c.id
-      LEFT JOIN lifts l ON t.lift_id = l.id
       WHERE t.id = $1
     `, [parseInt(ticketId)]);
 
@@ -148,23 +146,7 @@ router.post('/:ticketId/send', express.json(), async (req, res) => {
     }
 
     const ticket = ticketResult.rows[0];
-    let toNumber = ticket.contact_phone;
-
-    // If no contact phone (text message flow), get from most recent inbound chat message
-    if (!toNumber) {
-      const chatResult = await query(`
-        SELECT from_number
-        FROM chat_messages
-        WHERE ticket_id = $1 AND direction = 'inbound'
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, [parseInt(ticketId)]);
-      
-      if (chatResult.rows.length > 0) {
-        toNumber = chatResult.rows[0].from_number;
-        console.log(`[chat] Using phone number from chat history: ${toNumber}`);
-      }
-    }
+    const toNumber = ticket.contact_phone;
 
     if (!toNumber) {
       return res.status(400).json({
@@ -235,3 +217,4 @@ router.post('/:ticketId/mark-read', async (req, res) => {
 });
 
 module.exports = router;
+

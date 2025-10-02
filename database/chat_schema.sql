@@ -21,3 +21,4 @@ ALTER TABLE tickets ADD COLUMN IF NOT EXISTS agent_requested BOOLEAN DEFAULT fal
 CREATE INDEX IF NOT EXISTS idx_tickets_agent_requested ON tickets(agent_requested) WHERE agent_requested = true;
 
 -- Migration note: This schema is idempotent and safe to run multiple times
+
