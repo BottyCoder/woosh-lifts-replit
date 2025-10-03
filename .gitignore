@@ -88,3 +88,6 @@ TOKENS_*
 *.bak
 *~
 *.swp
+
+# Local documentation (keep local only)
+docs/
