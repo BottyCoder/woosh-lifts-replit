@@ -1092,6 +1092,48 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
     
     if (ticketResult.rows.length === 0) {
       console.log('[webhook/whatsapp] No open tickets found for contact:', contact.id);
+      
+      // Check if there are any recent closed tickets to provide helpful feedback
+      const closedTicketResult = await query(
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+         WHERE lc.contact_id = $1 
+           AND t.status = 'closed'
+           AND t.created_at > NOW() - INTERVAL '1 hour'
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [contact.id]
+      );
+      
+      if (closedTicketResult.rows.length > 0) {
+        const closedTicket = closedTicketResult.rows[0];
+        const ticketRef = closedTicket.ticket_reference || `TKT${closedTicket.id}`;
+        
+        console.log('[webhook/whatsapp] Found recent closed ticket, sending helpful message');
+        
+        // Send helpful message about closed ticket
+        try {
+          await sendTextViaBridge({
+            baseUrl: BRIDGE_BASE_URL,
+            apiKey: BRIDGE_API_KEY,
+            to: fromNumber,
+            text: `[${ticketRef}] This ticket has already been closed. If this is a new emergency, please contact us directly.`
+          });
+          console.log('[webhook/whatsapp] Closed ticket message sent successfully');
+        } catch (err) {
+          console.error('[webhook/whatsapp] Failed to send closed ticket message:', err);
+        }
+        
+        return res.status(200).json({ 
+          status: 'ok', 
+          processed: true, 
+          reason: 'ticket_already_closed',
+          ticket_id: closedTicket.id
+        });
+      }
+      
       return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_tickets' });
     }
     
