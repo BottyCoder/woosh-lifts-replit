@@ -1,0 +1,108 @@
+2025-10-03 13:26:17.64
+b3b96b70
+User
+[db] Query error: {
+2025-10-03 13:26:17.64
+b3b96b70
+User
+text: "SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,\n",
+2025-10-03 13:26:17.64
+b3b96b70
+User
+error: "password authentication failed for user 'neondb_owner'"
+2025-10-03 13:26:17.64
+b3b96b70
+User
+}
+2025-10-03 13:26:17.64
+b3b96b70
+User
+[reminder] Error checking pending reminders: error: password authentication failed for user 'neondb_owner'
+2025-10-03 13:26:17.64
+b3b96b70
+User
+at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+2025-10-03 13:26:17.64
+b3b96b70
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-10-03 13:26:17.64
+b3b96b70
+User
+at async query (/home/runner/workspace/src/db.js:47:20)
+2025-10-03 13:26:17.64
+b3b96b70
+User
+at async Timeout.checkPendingReminders [as _onTimeout] (/home/runner/workspace/src/server.js:1541:33) {
+2025-10-03 13:26:17.64
+b3b96b70
+User
+length: 75,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+severity: 'ERROR',
+2025-10-03 13:26:17.64
+b3b96b70
+User
+code: 'XX000',
+2025-10-03 13:26:17.64
+b3b96b70
+User
+detail: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+hint: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+position: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+internalPosition: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+internalQuery: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+where: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+schema: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+table: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+column: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+dataType: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+constraint: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+file: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+line: undefined,
+2025-10-03 13:26:17.64
+b3b96b70
+User
+routine: undefined
+2025-10-03 13:26:17.64
+b3b96b70
+User
+}
