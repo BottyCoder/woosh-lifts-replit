@@ -20,6 +20,7 @@ const chatRoutes = require('./routes/chat');
 const aiTestRoutes = require('./routes/ai-test');
 const chatDebugRoutes = require('./routes/chat-debug');
 const contactPerformanceRoutes = require('./routes/contact-performance');
+const sentinelDebugRoutes = require('./routes/sentinel-debug');
 // const debugTicketsRoutes = require('./routes/debug-tickets'); // Temporarily disabled
 
 // Environment configuration
@@ -200,6 +201,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/ai-test', aiTestRoutes);
 app.use('/api/chat-debug', chatDebugRoutes);
 app.use('/api/contact-performance', contactPerformanceRoutes);
+app.use('/api/sentinel-debug', sentinelDebugRoutes);
 // app.use('/api/debug-tickets', debugTicketsRoutes); // Temporarily disabled
 
 // Fix sequence endpoint
