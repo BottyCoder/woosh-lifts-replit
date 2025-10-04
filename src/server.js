@@ -19,7 +19,7 @@ const troubleshootRoutes = require('./routes/troubleshoot');
 const chatRoutes = require('./routes/chat');
 const aiTestRoutes = require('./routes/ai-test');
 const chatDebugRoutes = require('./routes/chat-debug');
-const debugTicketsRoutes = require('./routes/debug-tickets');
+// const debugTicketsRoutes = require('./routes/debug-tickets'); // Temporarily disabled
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -198,7 +198,7 @@ app.use('/api/troubleshoot', troubleshootRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/ai-test', aiTestRoutes);
 app.use('/api/chat-debug', chatDebugRoutes);
-app.use('/api/debug-tickets', debugTicketsRoutes);
+// app.use('/api/debug-tickets', debugTicketsRoutes); // Temporarily disabled
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
