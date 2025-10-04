@@ -39,7 +39,7 @@ router.get('/conversations', async (req, res) => {
         l.msisdn as lift_msisdn,
         c.display_name as contact_name,
         c.primary_msisdn as contact_phone,
-        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name,
+        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || t.lift_id) as lift_name,
         (SELECT COUNT(*) FROM chat_messages WHERE ticket_id = t.id) as message_count,
         (SELECT COUNT(*) FROM chat_messages WHERE ticket_id = t.id AND read_by_agent = false AND direction = 'inbound') as unread_count,
         (SELECT MAX(created_at) FROM chat_messages WHERE ticket_id = t.id) as last_message_at
