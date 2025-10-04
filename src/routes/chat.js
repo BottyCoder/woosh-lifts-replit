@@ -46,7 +46,7 @@ router.get('/conversations', async (req, res) => {
       FROM tickets t
       JOIN lifts l ON t.lift_id = l.id
       LEFT JOIN contacts c ON t.responded_by = c.id
-      WHERE t.status = 'open' OR (t.status = 'closed' AND (t.resolved_at IS NULL OR t.resolved_at > NOW() - INTERVAL '24 hours'))
+      WHERE t.status IN ('open', 'closed')
       ORDER BY 
         CASE WHEN t.agent_requested = true THEN 0 ELSE 1 END,
         last_message_at DESC NULLS LAST,
