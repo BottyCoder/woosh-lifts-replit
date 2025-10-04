@@ -20,7 +20,7 @@ const chatRoutes = require('./routes/chat');
 const aiTestRoutes = require('./routes/ai-test');
 const chatDebugRoutes = require('./routes/chat-debug');
 const contactPerformanceRoutes = require('./routes/contact-performance');
-const sentinelDebugRoutes = require('./routes/sentinel-debug');
+const sentinelDebugRoutes = require('./routes/sentinel-debug-simple');
 // const debugTicketsRoutes = require('./routes/debug-tickets'); // Temporarily disabled
 
 // Environment configuration
