@@ -939,36 +939,24 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       
       console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
       
-      // Find contact by WhatsApp number
-      const contactResult = await query(
-        'SELECT * FROM contacts WHERE primary_msisdn = $1',
+      // Find the most recent ticket where messages were sent TO this phone number
+      // This is more robust - works for any phone number without requiring contact records
+      const ticketResult = await query(
+        `SELECT DISTINCT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+         FROM tickets t
+         JOIN lifts l ON t.lift_id = l.id
+         JOIN chat_messages cm ON t.id = cm.ticket_id
+         WHERE cm.to_number = $1 
+           AND t.status IN ('open', 'closed')
+           AND cm.created_at > NOW() - INTERVAL '24 hours'
+         ORDER BY cm.created_at DESC
+         LIMIT 1`,
         [fromNumber]
       );
       
-      if (contactResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] Contact not found for text message:', fromNumber);
-        return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
-      }
-      
-      const contact = contactResult.rows[0];
-      
-      // Find most recent open ticket for this contact
-      const ticketResult = await query(
-        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
-         FROM tickets t
-         JOIN lifts l ON t.lift_id = l.id
-         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
-         WHERE lc.contact_id = $1 
-           AND t.status = 'open'
-           AND t.created_at > NOW() - INTERVAL '6 hours'
-         ORDER BY t.created_at DESC
-         LIMIT 1`,
-        [contact.id]
-      );
-      
       if (ticketResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] No recent open ticket for contact:', contact.id);
-        return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_ticket' });
+        console.log('[webhook/whatsapp] No recent ticket found with messages sent to:', fromNumber);
+        return res.status(200).json({ status: 'ok', processed: false, reason: 'no_conversation_found' });
       }
       
       const ticket = ticketResult.rows[0];
