@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 const { requireAiAuth } = require('../mw/ai-auth');
-const { requireAdminAuth } = require('../mw/admin-auth');
 
-// Apply admin authentication to all routes (more permissive than AI auth)
-router.use(requireAdminAuth);
+// Apply AI authentication to all routes (accepts both AI and Admin tokens)
+router.use(requireAiAuth);
 
 // Debug endpoint to check all tickets regardless of status
 router.get('/all-tickets', async (req, res) => {
