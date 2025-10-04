@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Token Test - GrowthPoint Lifts</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #5a6fd8;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { border-left: 4px solid #28a745; }
+        .error { border-left: 4px solid #dc3545; }
+        .warning { border-left: 4px solid #ffc107; }
+        .token-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-success { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI Token Test Suite</h1>
+        <p>Test your AI Assistant token and system connectivity</p>
+    </div>
+
+    <div class="test-section">
+        <h3>🔑 Authentication Setup</h3>
+        <label for="aiToken">AI Assistant Token:</label>
+        <input type="password" id="aiToken" class="token-input" placeholder="Enter your AI_ASSISTANT_TOKEN here">
+        <button class="test-button" onclick="saveToken()">Save Token</button>
+        <button class="test-button" onclick="clearToken()">Clear Token</button>
+        <div id="tokenStatus"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🧪 Basic Tests</h3>
+        <button class="test-button" onclick="testAuthentication()">Test Authentication</button>
+        <button class="test-button" onclick="testDatabase()">Test Database</button>
+        <button class="test-button" onclick="testEnvironment()">Check Environment</button>
+        <div id="basicResults"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>📱 Meta API Tests</h3>
+        <button class="test-button" onclick="testMetaApi()">Test Meta API</button>
+        <div id="metaResults"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>💬 Chat System Tests</h3>
+        <button class="test-button" onclick="testChatApi()">Test Chat API Access</button>
+        <div id="chatResults"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>🏥 System Health Check</h3>
+        <button class="test-button" onclick="runHealthCheck()">Run Full Health Check</button>
+        <div id="healthResults"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/ai-test';
+        let AI_TOKEN = localStorage.getItem('ai_token') || '';
+
+        // Load saved token on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (AI_TOKEN) {
+                document.getElementById('aiToken').value = AI_TOKEN;
+                updateTokenStatus('Token loaded from storage', 'success');
+            } else {
+                updateTokenStatus('No token saved', 'warning');
+            }
+        });
+
+        function saveToken() {
+            const token = document.getElementById('aiToken').value.trim();
+            if (token) {
+                AI_TOKEN = token;
+                localStorage.setItem('ai_token', token);
+                updateTokenStatus('Token saved successfully', 'success');
+            } else {
+                updateTokenStatus('Please enter a token', 'error');
+            }
+        }
+
+        function clearToken() {
+            AI_TOKEN = '';
+            document.getElementById('aiToken').value = '';
+            localStorage.removeItem('ai_token');
+            updateTokenStatus('Token cleared', 'warning');
+        }
+
+        function updateTokenStatus(message, type) {
+            const status = document.getElementById('tokenStatus');
+            const indicator = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️';
+            status.innerHTML = `<div class="status-${type}">${indicator} ${message}</div>`;
+        }
+
+        async function makeApiCall(endpoint) {
+            if (!AI_TOKEN) {
+                throw new Error('AI token not set. Please enter and save your token first.');
+            }
+
+            const response = await fetch(API_BASE + endpoint, {
+                method: 'GET',
+                headers: {
+                    'X-AI-Token': AI_TOKEN,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${data.error?.message || data.message || 'Unknown error'}`);
+            }
+            
+            return data;
+        }
+
+        function displayResult(containerId, data, isError = false) {
+            const container = document.getElementById(containerId);
+            const className = isError ? 'result error' : 'result success';
+            container.innerHTML = `<div class="${className}">${JSON.stringify(data, null, 2)}</div>`;
+        }
+
+        async function testAuthentication() {
+            try {
+                const result = await makeApiCall('/test');
+                displayResult('basicResults', result);
+            } catch (error) {
+                displayResult('basicResults', { error: error.message }, true);
+            }
+        }
+
+        async function testDatabase() {
+            try {
+                const result = await makeApiCall('/database');
+                displayResult('basicResults', result);
+            } catch (error) {
+                displayResult('basicResults', { error: error.message }, true);
+            }
+        }
+
+        async function testEnvironment() {
+            try {
+                const result = await makeApiCall('/env-check');
+                displayResult('basicResults', result);
+            } catch (error) {
+                displayResult('basicResults', { error: error.message }, true);
+            }
+        }
+
+        async function testMetaApi() {
+            try {
+                const result = await makeApiCall('/meta-test');
+                displayResult('metaResults', result);
+            } catch (error) {
+                displayResult('metaResults', { error: error.message }, true);
+            }
+        }
+
+        async function testChatApi() {
+            try {
+                const result = await makeApiCall('/chat-test');
+                displayResult('chatResults', result);
+            } catch (error) {
+                displayResult('chatResults', { error: error.message }, true);
+            }
+        }
+
+        async function runHealthCheck() {
+            try {
+                const result = await makeApiCall('/health');
+                displayResult('healthResults', result);
+            } catch (error) {
+                displayResult('healthResults', { error: error.message }, true);
+            }
+        }
+
+        // Auto-run basic tests if token is available
+        document.addEventListener('DOMContentLoaded', function() {
+            if (AI_TOKEN) {
+                setTimeout(() => {
+                    testAuthentication();
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>

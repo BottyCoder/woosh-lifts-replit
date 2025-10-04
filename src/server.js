@@ -17,6 +17,7 @@ const adminRoutes = require('./routes/admin');
 const statusRoutes = require('./routes/status');
 const troubleshootRoutes = require('./routes/troubleshoot');
 const chatRoutes = require('./routes/chat');
+const aiTestRoutes = require('./routes/ai-test');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -193,6 +194,7 @@ app.use('/api/troubleshoot', troubleshootRoutes);
 
 // Mount call centre chat routes
 app.use('/api/chat', chatRoutes);
+app.use('/api/ai-test', aiTestRoutes);
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
@@ -216,66 +218,6 @@ app.post('/admin/fix-sequence', async (req, res) => {
 
 // Health check endpoint
 app.get('/healthz', (_, res) => res.send('ok'));
-
-// Debug endpoint to check ticket association for a phone number
-app.get('/debug/contact-tickets/:phone', async (req, res) => {
-  try {
-    const phone = req.params.phone;
-    
-    // Find contact
-    const contactResult = await query(
-      'SELECT * FROM contacts WHERE primary_msisdn = $1',
-      [phone]
-    );
-    
-    if (contactResult.rows.length === 0) {
-      return res.json({ 
-        found: false, 
-        message: 'Contact not found',
-        phone: phone
-      });
-    }
-    
-    const contact = contactResult.rows[0];
-    
-    // Get lifts for this contact
-    const liftResult = await query(
-      `SELECT l.id, l.site_name, l.building, lc.relation
-       FROM lifts l
-       JOIN lift_contacts lc ON l.id = lc.lift_id
-       WHERE lc.contact_id = $1`,
-      [contact.id]
-    );
-    
-    // Get recent tickets for these lifts
-    const liftIds = liftResult.rows.map(row => row.lift_id);
-    const ticketResult = await query(
-      `SELECT t.*, l.site_name, l.building
-       FROM tickets t
-       JOIN lifts l ON t.lift_id = l.id
-       WHERE t.lift_id = ANY($1)
-         AND t.created_at > NOW() - INTERVAL '24 hours'
-       ORDER BY t.created_at DESC`,
-      [liftIds]
-    );
-    
-    res.json({
-      found: true,
-      contact: {
-        id: contact.id,
-        name: contact.display_name,
-        phone: contact.primary_msisdn
-      },
-      lifts: liftResult.rows,
-      recentTickets: ticketResult.rows,
-      openTickets: ticketResult.rows.filter(t => t.status === 'open')
-    });
-    
-  } catch (error) {
-    console.error('[debug] Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Debug endpoint
 app.get('/__debug', (req, res) => {
@@ -991,11 +933,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       const textMessage = message.text.body;
       const fromNumber = message.from;
       
-      console.log('[webhook/whatsapp] 📱 Text message received:', { 
-        from: fromNumber, 
-        text: textMessage.substring(0, 100) + (textMessage.length > 100 ? '...' : ''),
-        messageId: message.id 
-      });
+      console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
       
       // Find contact by WhatsApp number
       const contactResult = await query(
@@ -1004,79 +942,32 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       );
       
       if (contactResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] ⚠️ Contact not found for text message:', fromNumber);
-        
-        // Log this for debugging - we might need to create the contact or fix the number format
-        await query(
-          `INSERT INTO event_log (event_type, metadata, created_at)
-           VALUES ($1, $2, NOW())`,
-          ['contact_not_found_for_text', JSON.stringify({ from: fromNumber, message: textMessage.substring(0, 200) })]
-        );
-        
+        console.log('[webhook/whatsapp] Contact not found for text message:', fromNumber);
         return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_found' });
       }
       
       const contact = contactResult.rows[0];
       
-      // Find most recent open ticket for this contact's lift
-      // First, get the lifts this contact is linked to
-      const liftResult = await query(
-        `SELECT l.id as lift_id, l.site_name, l.building
-         FROM lifts l
-         JOIN lift_contacts lc ON l.id = lc.lift_id
-         WHERE lc.contact_id = $1`,
-        [contact.id]
-      );
-      
-      if (liftResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] Contact not linked to any lifts:', contact.id);
-        return res.status(200).json({ status: 'ok', processed: false, reason: 'contact_not_linked_to_lift' });
-      }
-      
-      const liftIds = liftResult.rows.map(row => row.lift_id);
-      
-      // Find the most recent open ticket for any of these lifts
+      // Find most recent open ticket for this contact
       const ticketResult = await query(
         `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
          FROM tickets t
          JOIN lifts l ON t.lift_id = l.id
-         WHERE t.lift_id = ANY($1)
+         JOIN lift_contacts lc ON t.lift_id = lc.lift_id
+         WHERE lc.contact_id = $1 
            AND t.status = 'open'
            AND t.created_at > NOW() - INTERVAL '6 hours'
          ORDER BY t.created_at DESC
          LIMIT 1`,
-        [liftIds]
+        [contact.id]
       );
       
       if (ticketResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] ⚠️ No recent open ticket for contact:', {
-          contactId: contact.id,
-          contactName: contact.display_name,
-          liftIds: liftIds,
-          searchedTimeframe: '6 hours'
-        });
-        
-        // Log this for debugging
-        await query(
-          `INSERT INTO event_log (event_type, contact_id, metadata, created_at)
-           VALUES ($1, $2, $3, NOW())`,
-          ['no_open_ticket_for_contact', contact.id, JSON.stringify({ 
-            contactName: contact.display_name, 
-            liftIds: liftIds,
-            message: textMessage.substring(0, 200)
-          })]
-        );
-        
+        console.log('[webhook/whatsapp] No recent open ticket for contact:', contact.id);
         return res.status(200).json({ status: 'ok', processed: false, reason: 'no_open_ticket' });
       }
       
       const ticket = ticketResult.rows[0];
-      
-      // Update ticket to mark this contact as the responder
-      await query(
-        `UPDATE tickets SET responded_by = $1, updated_at = NOW() WHERE id = $2`,
-        [contact.id, ticket.id]
-      );
       
       // Save text message to chat_messages
       await query(
@@ -1085,7 +976,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         [ticket.id, fromNumber, 'system', textMessage]
       );
       
-      console.log(`[webhook/whatsapp] ✅ Saved text message to ticket ${ticket.id} and updated responded_by to contact ${contact.id}`);
+      console.log(`[webhook/whatsapp] Saved text message to ticket ${ticket.id}`);
       
       // Check if message contains "agent" keyword (case-insensitive)
       if (textMessage.toLowerCase().includes('agent')) {
