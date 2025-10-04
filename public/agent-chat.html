@@ -281,16 +281,29 @@
 
     <script>
         const API_BASE = '/api/chat';
-        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ3b29zaC5haSIsInN1YiI6Im1hcmNAdm9vc2guYWkiLCJpYXQiOjE3MNTkyNDc4ODAsInNjb3BlIjoiYWRtaW4ifQ._q0Gv0aK1l1sXkJYx2Tb3Zk2r8V5yQYhQyqP8w1Z0b4';
+        let TOKEN = localStorage.getItem('admin_token') || '';
         
         let currentTicketId = null;
         let agentName = prompt('Enter your name:') || 'Agent';
+
+        // Prompt for admin token if not set
+        if (!TOKEN) {
+            const token = prompt('Please enter your admin token:');
+            if (token) {
+                TOKEN = token;
+                localStorage.setItem('admin_token', token);
+            } else {
+                alert('Admin token is required to use this application.');
+                document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;"><h2>Authentication Required</h2><p>Please refresh the page and enter your admin token.</p></div>';
+                return;
+            }
+        }
 
         async function apiCall(endpoint, method = 'GET', body = null) {
             const options = {
                 method,
                 headers: { 
-                    'X-AI-Token': TOKEN,
+                    'X-Admin-Token': TOKEN,
                     'Content-Type': 'application/json'
                 }
             };
@@ -300,7 +313,16 @@
             }
 
             const response = await fetch(API_BASE + endpoint, options);
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // Token expired or invalid, clear it and reload
+                    localStorage.removeItem('admin_token');
+                    alert('Authentication failed. Please refresh the page and enter your admin token again.');
+                    window.location.reload();
+                    return;
+                }
+                throw new Error(`API Error: ${response.status}`);
+            }
             return response.json();
         }
 
