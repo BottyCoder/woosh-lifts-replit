@@ -46,7 +46,7 @@ router.get('/conversations', async (req, res) => {
       FROM tickets t
       JOIN lifts l ON t.lift_id = l.id
       LEFT JOIN contacts c ON t.responded_by = c.id
-      WHERE t.status = 'open' OR (t.status = 'closed' AND t.resolved_at > NOW() - INTERVAL '1 hour')
+      WHERE t.status = 'open' OR (t.status = 'closed' AND (t.resolved_at IS NULL OR t.resolved_at > NOW() - INTERVAL '24 hours'))
       ORDER BY 
         CASE WHEN t.agent_requested = true THEN 0 ELSE 1 END,
         last_message_at DESC NULLS LAST,
@@ -132,10 +132,8 @@ router.post('/:ticketId/send', express.json(), async (req, res) => {
       SELECT 
         t.*,
         c.primary_msisdn as contact_phone,
-        c.display_name as contact_name,
-        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+        c.display_name as contact_name
       FROM tickets t
-      JOIN lifts l ON t.lift_id = l.id
       LEFT JOIN contacts c ON t.responded_by = c.id
       WHERE t.id = $1
     `, [parseInt(ticketId)]);
