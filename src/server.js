@@ -942,7 +942,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       // Find the most recent ticket where messages were sent TO this phone number
       // This is more robust - works for any phone number without requiring contact records
       const ticketResult = await query(
-        `SELECT DISTINCT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
+        `SELECT t.*, COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
          FROM tickets t
          JOIN lifts l ON t.lift_id = l.id
          JOIN chat_messages cm ON t.id = cm.ticket_id
