@@ -328,11 +328,14 @@
 
         async function loadConversations() {
             try {
+                console.log('Loading conversations...');
                 const data = await apiCall('/conversations');
+                console.log('Conversations loaded:', data);
                 const list = document.getElementById('conversationsList');
                 list.innerHTML = '';
 
                 if (data.conversations.length === 0) {
+                    console.log('No conversations found');
                     list.innerHTML = '<div class="empty-state"><div class="emoji">📭</div><div>No active conversations</div></div>';
                     return;
                 }
@@ -362,6 +365,8 @@
                 });
             } catch (error) {
                 console.error('Failed to load conversations:', error);
+                const list = document.getElementById('conversationsList');
+                list.innerHTML = '<div class="error-state">❌ Failed to load conversations<br><small>Check console for details</small></div>';
             }
         }
 
