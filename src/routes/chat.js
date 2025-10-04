@@ -44,7 +44,7 @@ router.get('/conversations', async (req, res) => {
         (SELECT COUNT(*) FROM chat_messages WHERE ticket_id = t.id AND read_by_agent = false AND direction = 'inbound') as unread_count,
         (SELECT MAX(created_at) FROM chat_messages WHERE ticket_id = t.id) as last_message_at
       FROM tickets t
-      JOIN lifts l ON t.lift_id = l.id
+      LEFT JOIN lifts l ON t.lift_id = l.id
       LEFT JOIN contacts c ON t.responded_by = c.id
       WHERE t.status IN ('open', 'closed')
       ORDER BY 
