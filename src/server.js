@@ -895,7 +895,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       console.log('[webhook/whatsapp] ✅ Meta webhook detected - skipping auth check');
     }
     
-    console.log('[webhook/whatsapp] Received:', JSON.stringify(req.body, null, 2));
+    console.log('🟡 WEBHOOK RECEIVED:', { timestamp: new Date().toISOString(), hasMessages: !!(req.body?.entry?.[0]?.changes?.[0]?.value?.messages) });
     
     // Log webhook received to database
     await query(
@@ -937,7 +937,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       const textMessage = message.text.body;
       const fromNumber = message.from;
       
-      console.log('[webhook/whatsapp] Text message received:', { from: fromNumber, text: textMessage });
+      console.log('🔵 WEBHOOK TEXT MESSAGE:', { from: fromNumber, text: textMessage, timestamp: new Date().toISOString() });
       
       // Find the most recent ticket where messages were sent TO this phone number
       // This is more robust - works for any phone number without requiring contact records
@@ -955,7 +955,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
       );
       
       if (ticketResult.rows.length === 0) {
-        console.log('[webhook/whatsapp] No recent ticket found with messages sent to:', fromNumber);
+        console.log('🔴 WEBHOOK NO TICKET FOUND:', { from: fromNumber, reason: 'no_conversation_found' });
         return res.status(200).json({ status: 'ok', processed: false, reason: 'no_conversation_found' });
       }
       
@@ -968,7 +968,7 @@ app.post('/webhooks/whatsapp', jsonParser, async (req, res) => {
         [ticket.id, fromNumber, 'system', textMessage]
       );
       
-      console.log(`[webhook/whatsapp] Saved text message to ticket ${ticket.id}`);
+      console.log('✅ WEBHOOK MESSAGE SAVED:', { ticketId: ticket.id, from: fromNumber, text: textMessage });
       
       // Check if message contains "agent" keyword (case-insensitive)
       if (textMessage.toLowerCase().includes('agent')) {
