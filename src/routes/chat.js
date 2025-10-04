@@ -132,8 +132,10 @@ router.post('/:ticketId/send', express.json(), async (req, res) => {
       SELECT 
         t.*,
         c.primary_msisdn as contact_phone,
-        c.display_name as contact_name
+        c.display_name as contact_name,
+        COALESCE(l.site_name || ' - ' || l.building, l.building, 'Lift ' || l.id) as lift_name
       FROM tickets t
+      JOIN lifts l ON t.lift_id = l.id
       LEFT JOIN contacts c ON t.responded_by = c.id
       WHERE t.id = $1
     `, [parseInt(ticketId)]);
