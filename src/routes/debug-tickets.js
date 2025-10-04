@@ -232,4 +232,41 @@ router.post('/create-samples', async (req, res) => {
   }
 });
 
+// Add WhatsApp contact for testing
+router.post('/add-whatsapp-contact', async (req, res) => {
+  try {
+    console.log('[debug-tickets] Adding WhatsApp contact...');
+    
+    // Add Marc's actual WhatsApp number as a contact
+    const contactResult = await query(`
+      INSERT INTO contacts (id, display_name, primary_msisdn, created_at) VALUES
+      ('f2c41e5f-9a96-4a45-aa6a-a7d3f4fce95c', 'Marc WhatsApp', '27690232755', NOW())
+      ON CONFLICT (id) DO NOTHING
+      RETURNING *
+    `);
+    
+    // Link to existing lift (Test Building)
+    await query(`
+      INSERT INTO lift_contacts (lift_id, contact_id, relation) VALUES
+      (1, 'f2c41e5f-9a96-4a45-aa6a-a7d3f4fce95c', 'primary')
+      ON CONFLICT DO NOTHING
+    `);
+    
+    res.json({
+      ok: true,
+      message: 'WhatsApp contact added successfully',
+      contact: contactResult.rows[0] || 'Contact already exists'
+    });
+  } catch (error) {
+    console.error('[debug-tickets/add-whatsapp-contact] Error:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: { 
+        message: 'Failed to add WhatsApp contact', 
+        details: error.message
+      } 
+    });
+  }
+});
+
 module.exports = router;
