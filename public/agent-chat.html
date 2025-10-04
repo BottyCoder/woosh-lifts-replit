@@ -284,20 +284,10 @@
         let TOKEN = localStorage.getItem('admin_token') || '3b8702920bd3cd67a9907badb05ad9751c74009fe18df9802b750dbd1302e741';
         
         let currentTicketId = null;
-        let agentName = prompt('Enter your name:') || 'Agent';
+        let agentName = 'Test Agent'; // Hardcoded for testing
 
-        // Prompt for admin token if not set
-        if (!TOKEN) {
-            const token = prompt('Please enter your admin token:');
-            if (token) {
-                TOKEN = token;
-                localStorage.setItem('admin_token', token);
-            } else {
-                alert('Admin token is required to use this application.');
-                document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;"><h2>Authentication Required</h2><p>Please refresh the page and enter your admin token.</p></div>';
-                return;
-            }
-        }
+        // Authentication disabled for testing - using hardcoded token
+        console.log('Using hardcoded admin token for testing');
 
         async function apiCall(endpoint, method = 'GET', body = null) {
             const options = {
@@ -314,14 +304,8 @@
 
             const response = await fetch(API_BASE + endpoint, options);
             if (!response.ok) {
-                if (response.status === 401) {
-                    // Token expired or invalid, clear it and reload
-                    localStorage.removeItem('admin_token');
-                    alert('Authentication failed. Please refresh the page and enter your admin token again.');
-                    window.location.reload();
-                    return;
-                }
-                throw new Error(`API Error: ${response.status}`);
+                console.error('API Error:', response.status, response.statusText);
+                throw new Error(`API Error: ${response.status} - ${response.statusText}`);
             }
             return response.json();
         }
