@@ -18,6 +18,7 @@ const statusRoutes = require('./routes/status');
 const troubleshootRoutes = require('./routes/troubleshoot');
 const chatRoutes = require('./routes/chat');
 const aiTestRoutes = require('./routes/ai-test');
+const chatDebugRoutes = require('./routes/chat-debug');
 
 // Environment configuration
 const BRIDGE_BASE_URL = process.env.BRIDGE_BASE_URL || "https://wa.woosh.ai";
@@ -195,6 +196,7 @@ app.use('/api/troubleshoot', troubleshootRoutes);
 // Mount call centre chat routes
 app.use('/api/chat', chatRoutes);
 app.use('/api/ai-test', aiTestRoutes);
+app.use('/api/chat-debug', chatDebugRoutes);
 
 // Fix sequence endpoint
 app.post('/admin/fix-sequence', async (req, res) => {
